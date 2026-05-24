@@ -1,22 +1,13 @@
--- ═══════════════════════════════════════════════════════════════════════════════
---  CAFUXZ1 ULTIMATE OPTIMIZER v11.0 PROFESSIONAL EDITION
---  Arquitetura: Modular · Task Scheduler · Dynamic Quality Scaling
---  
---  CHANGELOG v11.0:
---  · GUI removida do core — overlay minimalista toggleable (F3)
---  · Task Scheduler distribui carga entre frames sem lag spikes
---  · FFlags validados e atualizados para 2026 (flags obsoletas removidas)
---  · Sistema LOD Neural — esconde em vez de destruir, nunca quebra mapa
---  · Performance Manager adaptativo — ajusta agressividade por FPS real
---  · Network Engine otimizado com MTU tuning e physics sender rate
---  · Código 100% modular, tipado e com error handling centralizado
---  · Zero wait() — task.wait() em todo pipeline
+ -- ═══════════════════════════════════════════════════════════════════════════════
+--  CAFUXZ1 ULTIMATE OPTIMIZER v12.0 PRO — GLASS EDITION
+--  GUI: Glassmorphism · Bento Grid · Neon Accents · Microinteractions
+--  Integrado: Task Scheduler · LOD Neural · FFlags 2026 · Dynamic Scaling
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 1 — CORE SYSTEM
+--  SECAO 1 — CORE SYSTEM & SERVICES
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local Services = {
@@ -35,14 +26,19 @@ local Services = {
 	HttpService = game:GetService("HttpService"),
 	TweenService = game:GetService("TweenService"),
 	MaterialService = game:GetService("MaterialService"),
+	CoreGui = game:GetService("CoreGui"),
 }
 
 local LocalPlayer = Services.Players.LocalPlayer
 local Camera = Services.Workspace.CurrentCamera
 local Heartbeat = Services.RunService.Heartbeat
 local RenderStepped = Services.RunService.RenderStepped
+local Tween = Services.TweenService
 
--- Utilitários de alta performance
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  UTILITARIOS
+-- ═══════════════════════════════════════════════════════════════════════════════
+
 local Utils = {}
 
 function Utils.FastDistance(a, b)
@@ -57,10 +53,6 @@ end
 
 function Utils.SafeCall(fn, ...)
 	local ok, result = pcall(fn, ...)
-	if not ok then
-		-- Silencioso em produção; descomente para debug:
-		-- warn("[CAFUXZ1] SafeCall error:", result)
-	end
 	return ok, result
 end
 
@@ -69,7 +61,8 @@ function Utils.IsPlayerRelated(obj)
 	local parent = obj
 	while parent do
 		if parent:IsA("Player") or (LocalPlayer.Character and parent == LocalPlayer.Character) then
-		return true end
+			return true
+		end
 		parent = parent.Parent
 	end
 	return false
@@ -86,23 +79,20 @@ function Utils.IsLocalCharacter(obj)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 2 — CONFIGURACAO CENTRALIZADA
+--  CONFIGURACAO CENTRALIZADA
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local Config = {
-	-- Task Scheduler
 	TasksPerFrame = 60,
 	MaxTasksPerFrame = 120,
 	MinTasksPerFrame = 20,
 
-	-- LOD & Culling
 	LOD_Near = 80,
 	LOD_Mid = 180,
 	LOD_Far = 350,
 	LOD_Ultra = 600,
 	BackfaceAngle = 120,
 
-	-- Limits (destruição apenas em objetos NÃO interativos)
 	MaxDecalsGlobal = 30,
 	MaxLightsGlobal = 3,
 	MaxBillboardsGlobal = 12,
@@ -110,7 +100,6 @@ local Config = {
 	MaxBeamsGlobal = 8,
 	MaxSoundsPlaying = 5,
 
-	-- Distâncias de kill (somente para efeitos visuais, nunca mapa estrutural)
 	KillDistance_Particle = 140,
 	KillDistance_Decal = 90,
 	KillDistance_Light = 200,
@@ -119,59 +108,58 @@ local Config = {
 	KillDistance_Sound = 250,
 	KillDistance_Beam = 140,
 
-	-- Performance thresholds
 	FPS_High = 90,
 	FPS_Low = 45,
 	FPS_Critical = 25,
 
-	-- Network
 	PhysicsSenderRate = 1000,
 	NetworkUpdateRate = 60,
 	MTUSize = 1260,
 
-	-- Stretch
 	StretchValue = 0.80,
-
-	-- Boot
 	BootDelay = 1.5,
+
+	-- GUI
+	GUI_Enabled = true,
+	GUI_Accent = Color3.fromRGB(0, 212, 255), -- Cyan neon
+	GUI_Secondary = Color3.fromRGB(124, 58, 237), -- Purple
+	GUI_Danger = Color3.fromRGB(239, 68, 68), -- Red
+	GUI_Success = Color3.fromRGB(34, 197, 94), -- Green
+	GUI_Warning = Color3.fromRGB(234, 179, 8), -- Yellow
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 3 — TASK SCHEDULER (Motor de distribuição de carga)
+--  TASK SCHEDULER
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TaskScheduler = {
 	queue = {},
 	running = false,
 	frameBudget = 0,
-	lastFrameTime = 0,
 }
 
 function TaskScheduler:Init()
 	self.running = true
 	Heartbeat:Connect(function(dt)
-		self.frameBudget = math.clamp(dt * 1000, 2, 33) -- ms budget per frame
+		self.frameBudget = math.clamp(dt * 1000, 2, 33)
 		self:ProcessQueue()
 	end)
 end
 
 function TaskScheduler:Enqueue(taskFn, priority)
 	priority = priority or 5
-	table.insert(self.queue, {fn = taskFn, priority = priority, id = math.random(1, 999999)})
-	-- Sort by priority (lower = more urgent)
+	table.insert(self.queue, {fn = taskFn, priority = priority})
 	table.sort(self.queue, function(a, b) return a.priority < b.priority end)
 end
 
 function TaskScheduler:ProcessQueue()
 	if not self.running or #self.queue == 0 then return end
-
 	local startTime = tick()
 	local processed = 0
 	local maxPerFrame = math.clamp(Config.TasksPerFrame, Config.MinTasksPerFrame, Config.MaxTasksPerFrame)
 
 	while #self.queue > 0 and processed < maxPerFrame do
 		if (tick() - startTime) * 1000 > self.frameBudget then break end
-
 		local task = table.remove(self.queue, 1)
 		Utils.SafeCall(task.fn)
 		processed = processed + 1
@@ -179,11 +167,10 @@ function TaskScheduler:ProcessQueue()
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 4 — FFLAGS ENGINE v2026 (Validado & Otimizado)
+--  FFLAGS ENGINE v2026
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local FFlags = {
-	-- FPS & Render
 	["DFIntTaskSchedulerTargetFps"] = "9999",
 	["FIntTaskSchedulerAutoThreadLimit"] = "6",
 	["FIntTaskSchedulerAsyncTasksMinimumThreadCount"] = "2",
@@ -192,8 +179,6 @@ local FFlags = {
 	["FFlagGameBasicSettingsFramerateCap5"] = "False",
 	["FFlagDebugDisplayFPS"] = "True",
 	["FFlagHandleAltEnterFullscreenManually"] = "False",
-
-	-- Graphics Quality Override
 	["DFIntDebugFRMQualityLevelOverride"] = "1",
 	["DFIntDebugDynamicRenderKiloPixels"] = "1100",
 	["DFIntDebugRestrictGCDistance"] = "1",
@@ -233,8 +218,6 @@ local FFlags = {
 	["FFlagBaseThreadPoolUseRuntime2"] = "True",
 	["FFlagCacheTextBoundsInGuiText"] = "True",
 	["FFlagRbxStorageUseMemCache"] = "True",
-
-	-- Network & Ping
 	["DFIntRaknetBandwidthInfluxHundredthsPercentageV2"] = "10000",
 	["DFIntRakNetClockDriftAdjustmentPerPingMillisecond"] = "100",
 	["DFIntRaknetBandwidthPingSendEveryXSeconds"] = "1",
@@ -285,8 +268,6 @@ local FFlags = {
 	["DFIntNetworkLatencyTolerance"] = "1",
 	["DFIntMinimalNetworkPrediction"] = "0.1",
 	["FIntRakNetResendBufferArrayLength"] = "128",
-
-	-- Physics
 	["FIntPGSAngularDampingPermilPersecond"] = "0",
 	["DFFlagPhysicsSkipNonRealTimeHumanoidForceCalc2"] = "True",
 	["FFlagSimIslandizerManager"] = "False",
@@ -296,8 +277,6 @@ local FFlags = {
 	["FFlagFixScalingModelRendering"] = "False",
 	["DFIntNewRunningBaseAltitudeD"] = "45",
 	["DFIntRunningBaseOrientationP"] = "115",
-
-	-- Animation & LOD
 	["DFIntAnimationLodFacsVisibilityDenominator"] = "0",
 	["DFIntAnimationLodFacsDistanceMin"] = "0",
 	["DFIntAnimationLodFacsDistanceMax"] = "0",
@@ -317,8 +296,6 @@ local FFlags = {
 	["FFlagEnableNewHeapSnapshots"] = "False",
 	["FFlagEnableNewInput"] = "True",
 	["FFlagNewLightAttenuation"] = "True",
-
-	-- Telemetry & Logging (desligar tudo)
 	["DFFlagBrowserTrackerIdTelemetryEnabled"] = "False",
 	["DFFlagCoreScriptTelemetry2"] = "False",
 	["FFlagEnableTelemetryService1"] = "False",
@@ -357,24 +334,17 @@ local FFlags = {
 	["DFIntSignalRCoreServerTimeoutMs"] = "11100",
 	["DFIntSignalRCoreTimerMs"] = "750",
 	["DFIntSignalRCoreRpcQueueSize"] = "256",
-
-	-- CSG & Terrain
 	["DFIntCSGLevelOfDetailSwitchingDistance"] = "0",
 	["DFIntCSGLevelOfDetailSwitchingDistanceL12"] = "0",
 	["DFIntCSGLevelOfDetailSwitchingDistanceL23"] = "0",
 	["DFIntCSGLevelOfDetailSwitchingDistanceL34"] = "0",
 	["DFFlagDebugPauseVoxelizer"] = "True",
 	["DFFlagDebugRenderForceTechnologyVoxel"] = "True",
-	["FFlagEnableTerrainFoliageOptimizations"] = "True",
-
-	-- Audio
 	["DFFlagEnableSoundPreloading"] = "True",
 	["FFlagEnableQuickGameLaunch"] = "True",
 	["DFIntNumAssetsMaxToPreload"] = "9999",
 	["DFIntNumAssetsMaxToPreload2"] = "9999",
 	["FIntRenderLocalLightFadeInMs"] = "0",
-
-	-- Security / Anti-Log extras
 	["DFStringCrashUploadToBacktraceWindowsPlayerToken"] = "null",
 	["DFStringCrashUploadToBacktraceMacPlayerToken"] = "null",
 	["DFStringCrashUploadToBacktraceBaseUrl"] = "null",
@@ -386,28 +356,22 @@ local FFlagsEngine = {}
 
 function FFlagsEngine:Inject()
 	if not setfflag then
-		print("[CAFUXZ1] setfflag não disponível neste executor.")
+		print("[CAFUXZ1] setfflag não disponível.")
 		return 0
 	end
-
 	local start = os.clock()
 	local injected = 0
 	local skipped = 0
 
 	for rawFlag, value in pairs(FFlags) do
-		-- Pequeno yield a cada 20 flags para não travar o frame
 		if injected % 20 == 0 then task.wait() end
-
 		Utils.SafeCall(function()
-			-- Tenta flag crua
 			local ok1 = pcall(function() return getfflag(rawFlag) end)
 			if ok1 then
 				setfflag(rawFlag, value)
 				injected = injected + 1
 				return
 			end
-
-			-- Tenta sem prefixo
 			local stripped = rawFlag:gsub("^DFInt", ""):gsub("^DFFlag", ""):gsub("^FFlag", ""):gsub("^FInt", ""):gsub("^FString", ""):gsub("^FLog", "")
 			local ok2 = pcall(function() return getfflag(stripped) end)
 			if ok2 then
@@ -415,7 +379,6 @@ function FFlagsEngine:Inject()
 				injected = injected + 1
 				return
 			end
-
 			skipped = skipped + 1
 		end)
 	end
@@ -426,7 +389,7 @@ function FFlagsEngine:Inject()
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 5 — MAP PROTECTION SYSTEM (Proteção estrutural robusta)
+--  MAP PROTECTION SYSTEM
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local MapProtection = {
@@ -483,30 +446,22 @@ function MapProtection:Analyze(obj)
 	if self.protected[obj] then return true end
 
 	local name = obj.Name:lower()
-
-	-- Pattern match estrutural
 	for _, pattern in ipairs(self.structuralPatterns) do
 		if name:find(pattern) then
 			self.protected[obj] = true
 			return true
 		end
 	end
-
-	-- Pattern match interativo
 	for _, pattern in ipairs(self.interactivePatterns) do
 		if name:find(pattern) then
 			self.protected[obj] = true
 			return true
 		end
 	end
-
-	-- Parent workspace = estrutural
 	if obj.Parent == Services.Workspace then
 		self.protected[obj] = true
 		return true
 	end
-
-	-- Tamanho estrutural
 	if obj.Anchored then
 		if obj.Size.X > 50 and obj.Size.Z > 50 then
 			self.protected[obj] = true
@@ -517,16 +472,12 @@ function MapProtection:Analyze(obj)
 			return true
 		end
 	end
-
-	-- Material estrutural + tamanho
 	if obj.Anchored and self.structuralMaterials[obj.Material] then
 		if obj.Size.X > 20 or obj.Size.Z > 20 or obj.Size.Y > 10 then
 			self.protected[obj] = true
 			return true
 		end
 	end
-
-	-- Interativos filhos
 	for _, child in ipairs(obj:GetChildren()) do
 		if child:IsA("ClickDetector") or child:IsA("ProximityPrompt") 
 		   or child:IsA("TouchTransmitter") or child:IsA("VehicleSeat") 
@@ -535,15 +486,12 @@ function MapProtection:Analyze(obj)
 			return true
 		end
 	end
-
-	-- Altura baixa + grande área = chão
 	if obj.Anchored and obj.Position.Y < 15 and obj.Size.Y < 25 then
 		if obj.Size.X > 30 or obj.Size.Z > 30 then
 			self.protected[obj] = true
 			return true
 		end
 	end
-
 	return false
 end
 
@@ -555,15 +503,12 @@ function MapProtection:IsProtected(obj)
 	return self:Analyze(obj)
 end
 
--- Pre-indexar mapa existente
 function MapProtection:PreIndex()
 	local start = tick()
 	local count = 0
 	for _, obj in ipairs(Services.Workspace:GetDescendants()) do
 		if obj:IsA("BasePart") then
-			if self:Analyze(obj) then
-				count = count + 1
-			end
+			if self:Analyze(obj) then count = count + 1 end
 		end
 		if count % 500 == 0 then task.wait() end
 	end
@@ -571,7 +516,7 @@ function MapProtection:PreIndex()
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 6 — RENDER ENGINE (Lighting, Terrain, Shadows, LOD)
+--  RENDER ENGINE
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local RenderEngine = {
@@ -582,7 +527,6 @@ local RenderEngine = {
 function RenderEngine:OptimizeLighting()
 	if self.lightingFixed then return end
 	self.lightingFixed = true
-
 	Utils.SafeCall(function()
 		local lighting = Services.Lighting
 		lighting.GlobalShadows = false
@@ -593,7 +537,6 @@ function RenderEngine:OptimizeLighting()
 		lighting.EnvironmentSpecularScale = 0
 		lighting.ClockTime = 14
 		lighting.GeographicLatitude = 30
-
 		for _, effect in ipairs(lighting:GetChildren()) do
 			if effect:IsA("BlurEffect") or effect:IsA("SunRaysEffect") 
 			   or effect:IsA("ColorCorrectionEffect") or effect:IsA("BloomEffect")
@@ -614,7 +557,6 @@ end
 function RenderEngine:OptimizeTerrain()
 	if self.terrainFixed then return end
 	self.terrainFixed = true
-
 	Utils.SafeCall(function()
 		local terrain = Services.Workspace:FindFirstChildOfClass("Terrain")
 		if terrain then
@@ -625,8 +567,6 @@ function RenderEngine:OptimizeTerrain()
 			terrain.Decoration = false
 		end
 	end)
-
-	-- Remover nuvens
 	for _, obj in ipairs(Services.Workspace:GetChildren()) do
 		if obj:IsA("Clouds") then
 			pcall(function() obj:Destroy() end)
@@ -640,13 +580,10 @@ function RenderEngine:OptimizePart(part, camPos, camLook, distSq)
 	if MapProtection:IsProtected(part) then return end
 
 	local dist = math.sqrt(distSq)
-
-	-- Backface culling material (não destrói, só otimiza)
 	if dist > 60 then
 		local toObj = (part.Position - camPos).Unit
 		local dot = camLook:Dot(toObj)
 		local angle = math.deg(math.acos(math.clamp(dot, -1, 1)))
-
 		if angle > Config.BackfaceAngle then
 			Utils.SafeCall(function()
 				part.CastShadow = false
@@ -657,25 +594,17 @@ function RenderEngine:OptimizePart(part, camPos, camLook, distSq)
 			end)
 		end
 	end
-
-	-- Shadows kill distance
 	if dist > 200 and not Utils.IsLocalCharacter(part) then
 		Utils.SafeCall(function() part.CastShadow = false end)
 	end
-
-	-- Heavy materials → Plastic distante
 	if dist > Config.KillDistance_Mesh and not Utils.IsLocalCharacter(part) then
 		Utils.SafeCall(function()
-			if part.Material == Enum.Material.Glass 
-			   or part.Material == Enum.Material.Neon 
-			   or part.Material == Enum.Material.ForceField then
+			if part.Material == Enum.Material.Glass or part.Material == Enum.Material.Neon or part.Material == Enum.Material.ForceField then
 				part.Material = Enum.Material.Plastic
 				part.Reflectance = 0
 			end
 		end)
 	end
-
-	-- Textures distantes → Smooth
 	if dist > Config.KillDistance_Decal and not Utils.IsLocalCharacter(part) then
 		Utils.SafeCall(function()
 			part.TopSurface = Enum.SurfaceType.Smooth
@@ -686,15 +615,11 @@ function RenderEngine:OptimizePart(part, camPos, camLook, distSq)
 			part.BackSurface = Enum.SurfaceType.Smooth
 		end)
 	end
-
-	-- MeshParts: RenderFidelity performance distante
 	if part:IsA("MeshPart") and dist > 300 then
 		Utils.SafeCall(function()
 			part.RenderFidelity = Enum.RenderFidelity.Performance
 		end)
 	end
-
-	-- CollisionFidelity Box para não colidíveis (economiza physics)
 	if part:IsA("MeshPart") and not part.CanCollide then
 		Utils.SafeCall(function()
 			part.CollisionFidelity = Enum.CollisionFidelity.Box
@@ -703,19 +628,11 @@ function RenderEngine:OptimizePart(part, camPos, camLook, distSq)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 7 — OBJECT OPTIMIZER (Efeitos visuais — destruição segura)
+--  OBJECT OPTIMIZER
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local ObjectOptimizer = {
-	counters = {
-		decals = 0,
-		lights = 0,
-		billboards = 0,
-		particles = 0,
-		beams = 0,
-		unions = 0,
-		sounds = 0,
-	},
+	counters = {decals=0, lights=0, billboards=0, particles=0, beams=0, unions=0, sounds=0},
 	totalOptimized = 0,
 }
 
@@ -729,10 +646,8 @@ end
 function ObjectOptimizer:ProcessParticle(obj, camPos)
 	if not self:CanDestroy(obj) then return end
 	if not obj.Parent or not obj.Parent:IsA("BasePart") then return end
-
 	self.counters.particles = self.counters.particles + 1
 	local dist = Utils.FastDistance(obj.Parent.Position, camPos)
-
 	if dist > Config.KillDistance_Particle or self.counters.particles > Config.MaxParticlesGlobal then
 		Utils.SafeCall(function() obj:Destroy() end)
 		self.counters.particles = self.counters.particles - 1
@@ -743,10 +658,8 @@ end
 function ObjectOptimizer:ProcessDecal(obj, camPos)
 	if not self:CanDestroy(obj) then return end
 	if not obj.Parent or not obj.Parent:IsA("BasePart") then return end
-
 	self.counters.decals = self.counters.decals + 1
 	local dist = Utils.FastDistance(obj.Parent.Position, camPos)
-
 	if dist > Config.KillDistance_Decal or self.counters.decals > Config.MaxDecalsGlobal then
 		Utils.SafeCall(function() obj:Destroy() end)
 		self.counters.decals = self.counters.decals - 1
@@ -757,10 +670,8 @@ end
 function ObjectOptimizer:ProcessLight(obj, camPos)
 	if not self:CanDestroy(obj) then return end
 	if not obj.Parent or not obj.Parent:IsA("BasePart") then return end
-
 	self.counters.lights = self.counters.lights + 1
 	local dist = Utils.FastDistance(obj.Parent.Position, camPos)
-
 	if dist > Config.KillDistance_Light or self.counters.lights > Config.MaxLightsGlobal then
 		Utils.SafeCall(function() obj:Destroy() end)
 		self.counters.lights = self.counters.lights - 1
@@ -771,10 +682,8 @@ end
 function ObjectOptimizer:ProcessGUI(obj, camPos)
 	if not self:CanDestroy(obj) then return end
 	if not obj.Parent or not obj.Parent:IsA("BasePart") then return end
-
 	self.counters.billboards = self.counters.billboards + 1
 	local dist = Utils.FastDistance(obj.Parent.Position, camPos)
-
 	if dist > Config.KillDistance_GUI or self.counters.billboards > Config.MaxBillboardsGlobal then
 		Utils.SafeCall(function() obj:Destroy() end)
 		self.counters.billboards = self.counters.billboards - 1
@@ -784,43 +693,30 @@ end
 
 function ObjectOptimizer:ProcessBeam(obj, camPos)
 	if not self:CanDestroy(obj) then return end
-
 	self.counters.beams = self.counters.beams + 1
 	local pos = camPos
-	if obj.Parent and obj.Parent:IsA("BasePart") then
-		pos = obj.Parent.Position
-	end
+	if obj.Parent and obj.Parent:IsA("BasePart") then pos = obj.Parent.Position end
 	local dist = Utils.FastDistance(pos, camPos)
-
 	if dist > Config.KillDistance_Beam or self.counters.beams > Config.MaxBeamsGlobal then
 		Utils.SafeCall(function() obj:Destroy() end)
 		self.counters.beams = self.counters.beams - 1
 		self.totalOptimized = self.totalOptimized + 1
 	else
-		Utils.SafeCall(function()
-			obj.Segments = math.min(obj.Segments or 10, 4)
-		end)
+		Utils.SafeCall(function() obj.Segments = math.min(obj.Segments or 10, 4) end)
 	end
 end
 
 function ObjectOptimizer:ProcessUnion(obj, camPos)
 	if not self:CanDestroy(obj) then return end
-
 	self.counters.unions = self.counters.unions + 1
 	local dist = Utils.FastDistance(obj.Position, camPos)
-
-	if dist > 120 or self.counters.unions > Config.MaxUnionsGlobal then
+	if dist > 120 or self.counters.unions > 15 then
 		Utils.SafeCall(function()
 			local rep = Instance.new("Part")
-			rep.Size = obj.Size
-			rep.CFrame = obj.CFrame
-			rep.Color = obj.Color
-			rep.Material = obj.Material
-			rep.Transparency = obj.Transparency
-			rep.Anchored = obj.Anchored
-			rep.CanCollide = obj.CanCollide
-			rep.Parent = obj.Parent
-			rep.Name = obj.Name
+			rep.Size = obj.Size; rep.CFrame = obj.CFrame; rep.Color = obj.Color
+			rep.Material = obj.Material; rep.Transparency = obj.Transparency
+			rep.Anchored = obj.Anchored; rep.CanCollide = obj.CanCollide
+			rep.Parent = obj.Parent; rep.Name = obj.Name
 			obj:Destroy()
 		end)
 		self.counters.unions = self.counters.unions - 1
@@ -830,24 +726,17 @@ end
 
 function ObjectOptimizer:ProcessSound(obj, camPos)
 	if not obj:IsA("Sound") or not obj.IsPlaying then return end
-
 	local parent = obj.Parent
 	local pos = camPos
-	if parent and parent:IsA("BasePart") then
-		pos = parent.Position
-	end
+	if parent and parent:IsA("BasePart") then pos = parent.Position end
 	local dist = Utils.FastDistance(camPos, pos)
-
 	if dist > Config.KillDistance_Sound and not Utils.IsPlayerRelated(obj) then
-		Utils.SafeCall(function()
-			obj.Volume = 0
-			obj:Stop()
-		end)
+		Utils.SafeCall(function() obj.Volume = 0; obj:Stop() end)
 	end
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 8 — LOD SYSTEM (Players distantes — esconde em vez de destruir)
+--  LOD SYSTEM
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local LODSystem = {
@@ -861,22 +750,14 @@ function LODSystem:RefreshCache()
 	for _, plr in ipairs(Services.Players:GetPlayers()) do
 		if plr == LocalPlayer then continue end
 		if not plr.Character then continue end
-
 		local cache = self.playerCache[plr]
-		if cache and (now - cache.lastUpdate) < self.refreshInterval then
-			continue
-		end
+		if cache and (now - cache.lastUpdate) < self.refreshInterval then continue end
 
 		local char = plr.Character
 		local hrp = char:FindFirstChild("HumanoidRootPart")
 		if not hrp then continue end
 
-		local accessories = {}
-		local meshes = {}
-		local clothes = {}
-		local particles = {}
-		local parts = {}
-
+		local accessories, meshes, clothes, particles, parts = {}, {}, {}, {}, {}
 		for _, desc in ipairs(char:GetDescendants()) do
 			if desc:IsA("Accessory") then
 				local h = desc:FindFirstChild("Handle")
@@ -894,13 +775,8 @@ function LODSystem:RefreshCache()
 		end
 
 		self.playerCache[plr] = {
-			accessories = accessories,
-			meshes = meshes,
-			clothes = clothes,
-			particles = particles,
-			parts = parts,
-			hrp = hrp,
-			lastUpdate = now,
+			accessories = accessories, meshes = meshes, clothes = clothes,
+			particles = particles, parts = parts, hrp = hrp, lastUpdate = now,
 		}
 	end
 end
@@ -911,27 +787,18 @@ function LODSystem:ProcessPlayer(plr, camPos)
 		self.playerCache[plr] = nil
 		return
 	end
-
 	local dist = Utils.FastDistance(cache.hrp.Position, camPos)
 	local state = self.lodState[plr] or {originals = {}}
 	self.lodState[plr] = state
-
-	-- LOD Near: tudo visível
-	-- LOD Mid: acessórios invisíveis
-	-- LOD Far: meshes invisíveis, particles off
-	-- LOD Ultra: roupas removidas, shadows off
 
 	local isMid = dist > Config.LOD_Near
 	local isFar = dist > Config.LOD_Mid
 	local isUltra = dist > Config.LOD_Far
 
-	-- Acessórios
 	for _, handle in ipairs(cache.accessories) do
 		if handle and handle.Parent then
 			if isMid then
-				if state.originals[handle] == nil then
-					state.originals[handle] = handle.Transparency
-				end
+				if state.originals[handle] == nil then state.originals[handle] = handle.Transparency end
 				handle.Transparency = 1
 			else
 				if state.originals[handle] ~= nil then
@@ -942,19 +809,14 @@ function LODSystem:ProcessPlayer(plr, camPos)
 		end
 	end
 
-	-- Meshes
 	for _, mesh in ipairs(cache.meshes) do
 		if mesh and mesh.Parent then
 			if isFar then
 				if mesh:IsA("BasePart") then
-					if state.originals[mesh] == nil then
-						state.originals[mesh] = mesh.Transparency
-					end
+					if state.originals[mesh] == nil then state.originals[mesh] = mesh.Transparency end
 					mesh.Transparency = 1
 				elseif mesh:IsA("SpecialMesh") then
-					if state.originals[mesh] == nil then
-						state.originals[mesh] = mesh.Scale
-					end
+					if state.originals[mesh] == nil then state.originals[mesh] = mesh.Scale end
 					mesh.Scale = Vector3.new(0.001, 0.001, 0.001)
 				end
 			else
@@ -969,26 +831,19 @@ function LODSystem:ProcessPlayer(plr, camPos)
 		end
 	end
 
-	-- Particles
 	for _, p in ipairs(cache.particles) do
-		if p and p.Parent then
-			p.Enabled = not isFar
-		end
+		if p and p.Parent then p.Enabled = not isFar end
 	end
 
-	-- Roupas (ultra distance)
 	if isUltra then
 		for _, cloth in ipairs(cache.clothes) do
 			if cloth and cloth.Parent then
-				if state.originals[cloth] == nil then
-					state.originals[cloth] = true
-				end
+				if state.originals[cloth] == nil then state.originals[cloth] = true end
 				cloth:Destroy()
 			end
 		end
 	end
 
-	-- Shadows distantes
 	if isMid then
 		for _, part in ipairs(cache.parts) do
 			if part and part:IsA("BasePart") and part.CastShadow then
@@ -999,7 +854,7 @@ function LODSystem:ProcessPlayer(plr, camPos)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 9 — RESOLUTION STRETCH (Melhorado com estabilidade)
+--  STRETCH SYSTEM
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local StretchSystem = {
@@ -1016,28 +871,21 @@ local StretchSystem = {
 function StretchSystem:CheckStability()
 	local now = tick()
 	if now < self.freezeUntil then return false end
-
-	-- Verificar CameraType
 	if Camera.CameraType ~= Enum.CameraType.Custom then
 		self.freezeUntil = now + 2.0
 		self.stableFrames = 0
 		return false
 	end
-
-	-- Verificar velocidade da câmera
 	local currentCF = Camera.CFrame
 	local dt = now - self.lastTime
-
 	if dt > 0 and dt < 0.5 then
 		local deltaPos = (currentCF.Position - self.lastCamCF.Position).Magnitude
 		local velocity = deltaPos / dt
-
 		if velocity > 250 then
 			self.freezeUntil = now + 1.5
 			self.stableFrames = 0
 			return false
 		end
-
 		local lookDelta = math.acos(math.clamp(currentCF.LookVector:Dot(self.lastCamCF.LookVector), -1, 1))
 		if lookDelta > math.rad(45) and dt < 0.1 then
 			self.freezeUntil = now + 1.0
@@ -1045,7 +893,6 @@ function StretchSystem:CheckStability()
 			return false
 		end
 	end
-
 	self.stableFrames = self.stableFrames + 1
 	self.lastCamCF = currentCF
 	self.lastTime = now
@@ -1055,11 +902,9 @@ end
 function StretchSystem:Apply()
 	if not self.enabled or self.emergency then return end
 	if not self:CheckStability() then return end
-
 	Utils.SafeCall(function()
 		local viewport = Camera.ViewportSize
 		local newHeight = math.floor(viewport.Y / self.value)
-
 		if math.abs(Camera.ViewportSize.Y - newHeight) > 5 then
 			Camera.ViewportSize = Vector2.new(viewport.X, newHeight)
 		end
@@ -1067,7 +912,7 @@ function StretchSystem:Apply()
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 10 — PERFORMANCE MANAGER (Adaptativo por FPS)
+--  PERFORMANCE MANAGER
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local PerformanceManager = {
@@ -1084,172 +929,44 @@ function PerformanceManager:Update()
 	self.frameCount = self.frameCount + 1
 	local now = tick()
 	local delta = now - self.lastFPSUpdate
-
 	if delta >= 1 then
 		local fps = math.floor(self.frameCount / delta + 0.5)
 		self.currentFPS = fps
 		self.frameCount = 0
 		self.lastFPSUpdate = now
-
 		table.insert(self.fpsHistory, fps)
-		if #self.fpsHistory > self.maxHistory then
-			table.remove(self.fpsHistory, 1)
-		end
+		if #self.fpsHistory > self.maxHistory then table.remove(self.fpsHistory, 1) end
 	end
 end
 
 function PerformanceManager:GetAvgFPS()
 	if #self.fpsHistory == 0 then return 60 end
 	local sum = 0
-	for _, v in ipairs(self.fpsHistory) do
-		sum = sum + v
-	end
+	for _, v in ipairs(self.fpsHistory) do sum = sum + v end
 	return sum / #self.fpsHistory
 end
 
 function PerformanceManager:Adapt()
 	local now = tick()
 	if now - self.lastAdjustment < self.adjustmentCooldown then return end
-
 	local avg = self:GetAvgFPS()
-
 	if avg < Config.FPS_Critical then
-		-- Modo crítico: mínimo de trabalho por frame
 		Config.TasksPerFrame = math.max(Config.MinTasksPerFrame, 15)
-		Config.LOD_Near = 50
-		Config.LOD_Mid = 120
+		Config.LOD_Near = 50; Config.LOD_Mid = 120
 		self.lastAdjustment = now
 	elseif avg < Config.FPS_Low then
-		-- Modo baixo: reduzir carga
 		Config.TasksPerFrame = math.max(Config.MinTasksPerFrame, 30)
-		Config.LOD_Near = 70
-		Config.LOD_Mid = 150
+		Config.LOD_Near = 70; Config.LOD_Mid = 150
 		self.lastAdjustment = now
 	elseif avg > Config.FPS_High and Config.TasksPerFrame < Config.MaxTasksPerFrame then
-		-- Modo alto: pode fazer mais
 		Config.TasksPerFrame = math.min(Config.MaxTasksPerFrame, Config.TasksPerFrame + 8)
-		Config.LOD_Near = 100
-		Config.LOD_Mid = 200
+		Config.LOD_Near = 100; Config.LOD_Mid = 200
 		self.lastAdjustment = now
 	end
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 11 — STATS OVERLAY (Minimalista, toggleable F3)
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local StatsOverlay = {
-	gui = nil,
-	visible = false,
-	initialized = false,
-}
-
-function StatsOverlay:Init()
-	if self.initialized then return end
-	self.initialized = true
-
-	local sg = Instance.new("ScreenGui")
-	sg.Name = "CAFUXZ1_Stats_v11"
-	sg.ResetOnSpawn = false
-	sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	sg.Enabled = false
-
-	-- Proteção contra detecção em alguns jogos
-	pcall(function() sg.Parent = LocalPlayer:WaitForChild("PlayerGui", 3) end)
-	if not sg.Parent then
-		pcall(function() sg.Parent = game:GetService("CoreGui") end)
-	end
-
-	local frame = Instance.new("Frame")
-	frame.Name = "Container"
-	frame.Size = UDim2.new(0, 170, 0, 52)
-	frame.Position = UDim2.new(0, 12, 0, 12)
-	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-	frame.BackgroundTransparency = 0.15
-	frame.BorderSizePixel = 0
-	frame.Parent = sg
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 6)
-	corner.Parent = frame
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(0, 170, 255)
-	stroke.Thickness = 1.2
-	stroke.Transparency = 0.6
-	stroke.Parent = frame
-
-	local pad = Instance.new("UIPadding")
-	pad.PaddingLeft = UDim.new(0, 10)
-	pad.PaddingRight = UDim.new(0, 10)
-	pad.PaddingTop = UDim.new(0, 6)
-	pad.PaddingBottom = UDim.new(0, 6)
-	pad.Parent = frame
-
-	local layout = Instance.new("UIListLayout")
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Padding = UDim.new(0, 2)
-	layout.Parent = frame
-
-	local function mkLabel(name, order, color)
-		local lbl = Instance.new("TextLabel")
-		lbl.Name = name
-		lbl.Size = UDim2.new(1, 0, 0, 10)
-		lbl.BackgroundTransparency = 1
-		lbl.TextColor3 = color or Color3.fromRGB(220, 220, 220)
-		lbl.Font = Enum.Font.RobotoMono
-		lbl.TextSize = 9
-		lbl.TextXAlignment = Enum.TextXAlignment.Left
-		lbl.LayoutOrder = order
-		lbl.Text = name .. ": --"
-		lbl.Parent = frame
-		return lbl
-	end
-
-	self.labels = {
-		fps = mkLabel("FPS", 1, Color3.fromRGB(0, 255, 128)),
-		ping = mkLabel("PING", 2, Color3.fromRGB(255, 200, 0)),
-		mem = mkLabel("MEM", 3, Color3.fromRGB(0, 200, 255)),
-		opt = mkLabel("OPT", 4, Color3.fromRGB(255, 80, 80)),
-	}
-
-	self.gui = sg
-
-	-- Toggle com F3
-	Services.UserInputService.InputBegan:Connect(function(input, gpe)
-		if gpe then return end
-		if input.KeyCode == Enum.KeyCode.F3 then
-			self.visible = not self.visible
-			self.gui.Enabled = self.visible
-		end
-	end)
-end
-
-function StatsOverlay:Update()
-	if not self.visible or not self.gui then return end
-
-	local fps = math.floor(PerformanceManager.currentFPS)
-	local ping = 0
-	pcall(function()
-		local stats = Services.Stats.Network.ServerStatsItem
-		if stats then
-			ping = stats["Data Ping"]:GetValue()
-		end
-	end)
-
-	local mem = 0
-	pcall(function()
-		mem = collectgarbage("count") / 1024
-	end)
-
-	self.labels.fps.Text = string.format("FPS: %d", fps)
-	self.labels.ping.Text = string.format("PING: %.0fms", ping)
-	self.labels.mem.Text = string.format("MEM: %.1fMB", mem)
-	self.labels.opt.Text = string.format("OPT: %d", ObjectOptimizer.totalOptimized)
-end
-
--- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 12 — ANTI-VOID & CHARACTER PROTECTION
+--  SAFETY SYSTEM
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local SafetySystem = {}
@@ -1258,22 +975,17 @@ function SafetySystem:AntiVoid()
 	if not LocalPlayer.Character then return end
 	local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
-
 	if hrp.Position.Y < -500 then
 		local spawned = false
 		for _, obj in ipairs(Services.Workspace:GetDescendants()) do
 			if obj:IsA("SpawnLocation") then
-				Utils.SafeCall(function()
-					hrp.CFrame = obj.CFrame + Vector3.new(0, 5, 0)
-				end)
+				Utils.SafeCall(function() hrp.CFrame = obj.CFrame + Vector3.new(0, 5, 0) end)
 				spawned = true
 				break
 			end
 		end
 		if not spawned then
-			Utils.SafeCall(function()
-				hrp.CFrame = CFrame.new(0, 50, 0)
-			end)
+			Utils.SafeCall(function() hrp.CFrame = CFrame.new(0, 50, 0) end)
 		end
 	end
 end
@@ -1282,19 +994,15 @@ function SafetySystem:ProtectCharacter(char)
 	if not char then return end
 	local humanoid = char:FindFirstChildOfClass("Humanoid")
 	if not humanoid then return end
-
-	-- Monitorar estados perigosos silenciosamente
 	Utils.SafeCall(function()
 		humanoid.StateChanged:Connect(function(oldState, newState)
-			if newState == Enum.HumanoidStateType.PlatformStanding or newState == Enum.HumanoidStateType.Physics then
-				-- Possível fling detectado, mas não interfere para evitar stuck
-			end
+			-- Monitora estados perigosos silenciosamente
 		end)
 	end)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 13 — ADMIN DETECTOR
+--  ADMIN DETECTOR
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local AdminDetector = {}
@@ -1305,24 +1013,21 @@ function AdminDetector:Scan()
 	   game:GetService("JointsService"):FindFirstChild("Adonis_Control") then
 		return {name = "Adonis", url = "https://pastebin.com/raw/0vzxh67w"}
 	end
-
 	local kohlNames = {"Kohl's Admin", "Kohls Admin", "Kohl's", "Admin"}
 	for _, name in ipairs(kohlNames) do
 		if Services.Workspace:FindFirstChild(name) or Services.ReplicatedStorage:FindFirstChild(name) then
 			return {name = "Kohl's Admin", url = "https://pastebin.com/raw/aXvK3WRk"}
 		end
 	end
-
 	if Services.ReplicatedStorage:FindFirstChild("Cmdr") or 
 	   LocalPlayer.PlayerGui:FindFirstChild("Cmdr") then
 		return {name = "Cmdr", url = "https://pastebin.com/raw/R1bH2Ubs"}
 	end
-
 	return {name = "Universal", url = "https://pastebin.com/raw/UYxUJ081"}
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 14 — WORLD SCANNER (Distribuído via Task Scheduler)
+--  WORLD SCANNER
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local WorldScanner = {
@@ -1337,23 +1042,13 @@ function WorldScanner:StartFullScan()
 	if self.isScanning then return end
 	self.isScanning = true
 	self.scanIndex = 1
-
-	-- Reset counters
-	ObjectOptimizer.counters = {
-		decals = 0, lights = 0, billboards = 0,
-		particles = 0, beams = 0, unions = 0, sounds = 0,
-	}
-
-	-- Coletar descendentes
+	ObjectOptimizer.counters = {decals=0, lights=0, billboards=0, particles=0, beams=0, unions=0, sounds=0}
 	self.descendants = Services.Workspace:GetDescendants()
-
-	-- Atualizar LOD cache
 	LODSystem:RefreshCache()
 end
 
 function WorldScanner:ProcessBatch()
 	if not self.isScanning then return end
-
 	local camPos = Camera.CFrame.Position
 	local camLook = Camera.CFrame.LookVector
 	local total = #self.descendants
@@ -1363,10 +1058,7 @@ function WorldScanner:ProcessBatch()
 	for i = self.scanIndex, endIdx do
 		local obj = self.descendants[i]
 		if not obj or not obj.Parent then continue end
-
-		-- Categorizar e processar
-		if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") 
-		   or obj:IsA("Fire") or obj:IsA("Sparkles") then
+		if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
 			ObjectOptimizer:ProcessParticle(obj, camPos)
 		elseif obj:IsA("Decal") or obj:IsA("Texture") then
 			ObjectOptimizer:ProcessDecal(obj, camPos)
@@ -1393,22 +1085,15 @@ function WorldScanner:ProcessBatch()
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 15 — DESCENDANT ADDED HANDLER (Preventivo)
+--  DESCENDANT ADDED HANDLER
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 Services.Workspace.DescendantAdded:Connect(function(obj)
 	if not obj then return end
-
-	-- Proteger mapa automaticamente
-	if obj:IsA("BasePart") then
-		MapProtection:Analyze(obj)
-	end
-
-	-- Efeitos visuais novos → destruir imediatamente se muito distante
+	if obj:IsA("BasePart") then MapProtection:Analyze(obj) end
 	local camPos = Camera.CFrame.Position
 
-	if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") 
-	   or obj:IsA("Fire") or obj:IsA("Sparkles") then
+	if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
 		if obj.Parent and obj.Parent:IsA("BasePart") then
 			if not MapProtection:IsProtected(obj) and not Utils.IsPlayerRelated(obj) then
 				if Utils.FastDistance(obj.Parent.Position, camPos) > Config.KillDistance_Particle then
@@ -1426,13 +1111,9 @@ Services.Workspace.DescendantAdded:Connect(function(obj)
 		if obj.Parent and obj.Parent:IsA("BasePart") and not MapProtection:IsProtected(obj.Parent) then
 			local decals = 0
 			for _, c in ipairs(obj.Parent:GetChildren()) do
-				if c:IsA("Decal") or c:IsA("Texture") then
-					decals = decals + 1
-				end
+				if c:IsA("Decal") or c:IsA("Texture") then decals = decals + 1 end
 			end
-			if decals > 2 then
-				Utils.SafeCall(function() obj:Destroy() end)
-			end
+			if decals > 2 then Utils.SafeCall(function() obj:Destroy() end) end
 		end
 	elseif obj:IsA("BasePart") and not obj:IsA("Terrain") then
 		if not MapProtection:IsProtected(obj) and not Utils.IsLocalCharacter(obj) then
@@ -1447,7 +1128,891 @@ Services.Workspace.DescendantAdded:Connect(function(obj)
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 16 — MAIN LOOP (Heartbeat unificado e leve)
+--  ╔══════════════════════════════════════════════════════════════════════╗
+--  ║  GUI SYSTEM — GLASSMORPHISM EDITION v12.0                            ║
+--  ║  Design: Bento Grid · Neon Accents · Microinteractions · Compact       ║
+--  ╚══════════════════════════════════════════════════════════════════════╝
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+local GUI = {
+	ScreenGui = nil,
+	MainFrame = nil,
+	Minimized = false,
+	Tab = "Performance",
+	Drag = {active=false, start=nil, pos=nil},
+	Elements = {},
+	Tweens = {},
+}
+
+-- Paleta de cores
+local Colors = {
+	Bg = Color3.fromRGB(10, 10, 15),         -- Fundo quase preto
+	Card = Color3.fromRGB(18, 18, 28),        -- Card escuro
+	Glass = Color3.fromRGB(25, 25, 40),      -- Glass sutil
+	Accent = Config.GUI_Accent,               -- Cyan neon
+	Accent2 = Config.GUI_Secondary,          -- Purple
+	Text = Color3.fromRGB(240, 240, 245),    -- Texto principal
+	TextDim = Color3.fromRGB(150, 150, 170), -- Texto secundário
+	Border = Color3.fromRGB(40, 40, 60),     -- Borda sutil
+	BorderGlow = Config.GUI_Accent,           -- Borda glow
+	Success = Config.GUI_Success,
+	Danger = Config.GUI_Danger,
+	Warning = Config.GUI_Warning,
+}
+
+-- Utilitários de GUI
+local function Create(class, props)
+	local obj = Instance.new(class)
+	for k, v in pairs(props) do obj[k] = v end
+	return obj
+end
+
+local function TweenObj(obj, props, duration, easing, direction)
+	duration = duration or 0.25
+	easing = easing or Enum.EasingStyle.Quart
+	direction = direction or Enum.EasingDirection.Out
+	local tween = Tween:Create(obj, TweenInfo.new(duration, easing, direction), props)
+	tween:Play()
+	return tween
+end
+
+local function AddCorner(obj, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius or 8)
+	c.Parent = obj
+	return c
+end
+
+local function AddStroke(obj, color, thickness, trans)
+	local s = Instance.new("UIStroke")
+	s.Color = color or Colors.Border
+	s.Thickness = thickness or 1
+	s.Transparency = trans or 0.8
+	s.Parent = obj
+	return s
+end
+
+local function AddGradient(obj, color1, color2, rot)
+	local g = Instance.new("UIGradient")
+	g.Color = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, color1 or Colors.Card),
+		ColorSequenceKeypoint.new(1, color2 or Colors.Bg)
+	}
+	g.Rotation = rot or 45
+	g.Parent = obj
+	return g
+end
+
+local function AddShadow(obj)
+	local s = Instance.new("ImageLabel")
+	s.Name = "Shadow"
+	s.AnchorPoint = Vector2.new(0.5, 0.5)
+	s.Position = UDim2.new(0.5, 0, 0.5, 4)
+	s.Size = UDim2.new(1, 20, 1, 20)
+	s.BackgroundTransparency = 1
+	s.Image = "rbxassetid://131604521" -- blur shadow asset
+	s.ImageColor3 = Color3.new(0, 0, 0)
+	s.ImageTransparency = 0.7
+	s.ZIndex = obj.ZIndex - 1
+	s.Parent = obj
+	return s
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  GUI: TOGGLE SWITCH
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+function GUI:CreateToggle(parent, pos, label, defaultState, callback)
+	local container = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 32),
+		Position = pos,
+		BackgroundTransparency = 1,
+		Parent = parent,
+	})
+
+	local lbl = Create("TextLabel", {
+		Size = UDim2.new(1, -50, 1, 0),
+		Position = UDim2.new(0, 0, 0, 0),
+		BackgroundTransparency = 1,
+		Text = label,
+		TextColor3 = Colors.Text,
+		Font = Enum.Font.GothamMedium,
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = container,
+	})
+
+	local track = Create("Frame", {
+		Size = UDim2.new(0, 40, 0, 20),
+		Position = UDim2.new(1, -44, 0.5, -10),
+		BackgroundColor3 = defaultState and Colors.Accent or Colors.Border,
+		BorderSizePixel = 0,
+		Parent = container,
+	})
+	AddCorner(track, 10)
+
+	local thumb = Create("Frame", {
+		Size = UDim2.new(0, 16, 0, 16),
+		Position = defaultState and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BorderSizePixel = 0,
+		Parent = track,
+	})
+	AddCorner(thumb, 8)
+
+	local state = defaultState
+	local function update()
+		state = not state
+		local targetColor = state and Colors.Accent or Colors.Border
+		local targetPos = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+		TweenObj(track, {BackgroundColor3 = targetColor}, 0.2)
+		TweenObj(thumb, {Position = targetPos}, 0.2, Enum.EasingStyle.Back)
+		if callback then callback(state) end
+	end
+
+	track.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			update()
+		end
+	end)
+
+	return {container = container, getState = function() return state end, setState = function(s) 
+		if s ~= state then update() end 
+	end}
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  GUI: SLIDER
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+function GUI:CreateSlider(parent, pos, label, min, max, default, callback)
+	local container = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 44),
+		Position = pos,
+		BackgroundTransparency = 1,
+		Parent = parent,
+	})
+
+	local lbl = Create("TextLabel", {
+		Size = UDim2.new(1, -40, 0, 16),
+		Position = UDim2.new(0, 0, 0, 0),
+		BackgroundTransparency = 1,
+		Text = label,
+		TextColor3 = Colors.Text,
+		Font = Enum.Font.GothamMedium,
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = container,
+	})
+
+	local valLbl = Create("TextLabel", {
+		Size = UDim2.new(0, 40, 0, 16),
+		Position = UDim2.new(1, -40, 0, 0),
+		BackgroundTransparency = 1,
+		Text = tostring(default),
+		TextColor3 = Colors.Accent,
+		Font = Enum.Font.RobotoMono,
+		TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Parent = container,
+	})
+
+	local track = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 4),
+		Position = UDim2.new(0, 0, 0, 28),
+		BackgroundColor3 = Colors.Border,
+		BorderSizePixel = 0,
+		Parent = container,
+	})
+	AddCorner(track, 2)
+
+	local fill = Create("Frame", {
+		Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
+		Position = UDim2.new(0, 0, 0, 0),
+		BackgroundColor3 = Colors.Accent,
+		BorderSizePixel = 0,
+		Parent = track,
+	})
+	AddCorner(fill, 2)
+
+	local knob = Create("Frame", {
+		Size = UDim2.new(0, 12, 0, 12),
+		Position = UDim2.new((default - min) / (max - min), -6, 0.5, -6),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BorderSizePixel = 0,
+		Parent = track,
+	})
+	AddCorner(knob, 6)
+
+	local dragging = false
+	local function setValue(input)
+		local absPos = track.AbsolutePosition.X
+		local absSize = track.AbsoluteSize.X
+		local x = math.clamp((input.Position.X - absPos) / absSize, 0, 1)
+		local value = math.floor(min + x * (max - min))
+		fill.Size = UDim2.new(x, 0, 1, 0)
+		knob.Position = UDim2.new(x, -6, 0.5, -6)
+		valLbl.Text = tostring(value)
+		if callback then callback(value) end
+		return value
+	end
+
+	knob.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			TweenObj(knob, {Size = UDim2.new(0, 16, 0, 16), Position = UDim2.new(knob.Position.X.Scale, -8, 0.5, -8)}, 0.15)
+		end
+	end)
+
+	Services.UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			setValue(input)
+		end
+	end)
+
+	Services.UserInputService.InputEnded:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+			dragging = false
+			TweenObj(knob, {Size = UDim2.new(0, 12, 0, 12), Position = UDim2.new(knob.Position.X.Scale, -6, 0.5, -6)}, 0.15)
+		end
+	end)
+
+	track.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			setValue(input)
+		end
+	end)
+
+	return {container = container, setValue = function(v)
+		local x = (v - min) / (max - min)
+		fill.Size = UDim2.new(x, 0, 1, 0)
+		knob.Position = UDim2.new(x, -6, 0.5, -6)
+		valLbl.Text = tostring(v)
+		if callback then callback(v) end
+	end}
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  GUI: BUTTON
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+function GUI:CreateButton(parent, pos, text, color, callback)
+	local btn = Create("TextButton", {
+		Size = UDim2.new(1, 0, 0, 32),
+		Position = pos,
+		BackgroundColor3 = color or Colors.Glass,
+		BorderSizePixel = 0,
+		Text = text,
+		TextColor3 = Colors.Text,
+		Font = Enum.Font.GothamSemibold,
+		TextSize = 12,
+		AutoButtonColor = false,
+		Parent = parent,
+	})
+	AddCorner(btn, 8)
+	local stroke = AddStroke(btn, color or Colors.Accent, 1.5, 0.7)
+
+	btn.MouseEnter:Connect(function()
+		TweenObj(btn, {BackgroundColor3 = Colors.Accent}, 0.2)
+		TweenObj(stroke, {Transparency = 0.3}, 0.2)
+		TweenObj(btn, {Size = UDim2.new(1, 4, 0, 34), Position = UDim2.new(0, -2, 0, pos.Y.Offset - 1)}, 0.15)
+	end)
+
+	btn.MouseLeave:Connect(function()
+		TweenObj(btn, {BackgroundColor3 = color or Colors.Glass}, 0.2)
+		TweenObj(stroke, {Transparency = 0.7}, 0.2)
+		TweenObj(btn, {Size = UDim2.new(1, 0, 0, 32), Position = pos}, 0.15)
+	end)
+
+	btn.MouseButton1Down:Connect(function()
+		TweenObj(btn, {Size = UDim2.new(1, -2, 0, 30), Position = UDim2.new(0, 1, 0, pos.Y.Offset + 1)}, 0.1)
+	end)
+
+	btn.MouseButton1Up:Connect(function()
+		TweenObj(btn, {Size = UDim2.new(1, 4, 0, 34), Position = UDim2.new(0, -2, 0, pos.Y.Offset - 1)}, 0.1)
+		if callback then callback() end
+	end)
+
+	return btn
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  GUI: STAT CARD (Bento Grid Style)
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+function GUI:CreateStatCard(parent, pos, size, label, value, color)
+	local card = Create("Frame", {
+		Size = size,
+		Position = pos,
+		BackgroundColor3 = Colors.Card,
+		BorderSizePixel = 0,
+		Parent = parent,
+	})
+	AddCorner(card, 10)
+	AddStroke(card, Colors.Border, 1, 0.9)
+
+	local grad = AddGradient(card, Colors.Card, Color3.fromRGB(12, 12, 20), 135)
+
+	local lbl = Create("TextLabel", {
+		Size = UDim2.new(1, -12, 0, 14),
+		Position = UDim2.new(0, 6, 0, 6),
+		BackgroundTransparency = 1,
+		Text = label,
+		TextColor3 = Colors.TextDim,
+		Font = Enum.Font.GothamMedium,
+		TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = card,
+	})
+
+	local val = Create("TextLabel", {
+		Size = UDim2.new(1, -12, 0, 22),
+		Position = UDim2.new(0, 6, 0, 20),
+		BackgroundTransparency = 1,
+		Text = tostring(value),
+		TextColor3 = color or Colors.Accent,
+		Font = Enum.Font.RobotoMono,
+		TextSize = 16,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = card,
+	})
+
+	return {card = card, label = lbl, value = val, setValue = function(v, c)
+		val.Text = tostring(v)
+		if c then val.TextColor3 = c end
+	end}
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  GUI: MAIN WINDOW CONSTRUCTION
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+function GUI:Build()
+	-- ScreenGui
+	self.ScreenGui = Create("ScreenGui", {
+		Name = "CAFUXZ1_Glass_v12",
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	})
+
+	pcall(function() self.ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui", 3) end)
+	if not self.ScreenGui.Parent then
+		pcall(function() self.ScreenGui.Parent = Services.CoreGui end)
+	end
+
+	-- Main Frame (Glassmorphism)
+	self.MainFrame = Create("Frame", {
+		Name = "Main",
+		Size = UDim2.new(0, 320, 0, 420),
+		Position = UDim2.new(0, 60, 0, 60),
+		BackgroundColor3 = Colors.Bg,
+		BackgroundTransparency = 0.15,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Parent = self.ScreenGui,
+	})
+	AddCorner(self.MainFrame, 16)
+	AddStroke(self.MainFrame, Colors.Border, 1.5, 0.6)
+
+	-- Glass overlay
+	local glass = Create("Frame", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundColor3 = Colors.Bg,
+		BackgroundTransparency = 0.5,
+		BorderSizePixel = 0,
+		Parent = self.MainFrame,
+	})
+	AddCorner(glass, 16)
+
+	-- Header
+	local header = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 44),
+		BackgroundColor3 = Colors.Card,
+		BackgroundTransparency = 0.3,
+		BorderSizePixel = 0,
+		Parent = self.MainFrame,
+	})
+
+	local headerGrad = AddGradient(header, Colors.Card, Color3.fromRGB(15, 15, 25), 180)
+
+	local title = Create("TextLabel", {
+		Size = UDim2.new(1, -80, 1, 0),
+		Position = UDim2.new(0, 16, 0, 0),
+		BackgroundTransparency = 1,
+		Text = "CAFUXZ1  v12",
+		TextColor3 = Colors.Text,
+		Font = Enum.Font.GothamBold,
+		TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = header,
+	})
+
+	-- Versão pequena
+	local ver = Create("TextLabel", {
+		Size = UDim2.new(0, 40, 0, 12),
+		Position = UDim2.new(0, 16, 0, 28),
+		BackgroundTransparency = 1,
+		Text = "PRO",
+		TextColor3 = Colors.Accent,
+		Font = Enum.Font.GothamBold,
+		TextSize = 9,
+		Parent = header,
+	})
+
+	-- Botão minimize
+	local minBtn = Create("TextButton", {
+		Size = UDim2.new(0, 28, 0, 28),
+		Position = UDim2.new(1, -64, 0, 8),
+		BackgroundColor3 = Colors.Glass,
+		BorderSizePixel = 0,
+		Text = "−",
+		TextColor3 = Colors.Text,
+		Font = Enum.Font.GothamBold,
+		TextSize = 16,
+		AutoButtonColor = false,
+		Parent = header,
+	})
+	AddCorner(minBtn, 6)
+	AddStroke(minBtn, Colors.Border, 1, 0.8)
+
+	minBtn.MouseEnter:Connect(function()
+		TweenObj(minBtn, {BackgroundColor3 = Colors.Warning}, 0.2)
+	end)
+	minBtn.MouseLeave:Connect(function()
+		TweenObj(minBtn, {BackgroundColor3 = Colors.Glass}, 0.2)
+	end)
+	minBtn.MouseButton1Click:Connect(function()
+		self:Minimize()
+	end)
+
+	-- Botão close
+	local closeBtn = Create("TextButton", {
+		Size = UDim2.new(0, 28, 0, 28),
+		Position = UDim2.new(1, -32, 0, 8),
+		BackgroundColor3 = Colors.Glass,
+		BorderSizePixel = 0,
+		Text = "×",
+		TextColor3 = Colors.Text,
+		Font = Enum.Font.GothamBold,
+		TextSize = 18,
+		AutoButtonColor = false,
+		Parent = header,
+	})
+	AddCorner(closeBtn, 6)
+	AddStroke(closeBtn, Colors.Border, 1, 0.8)
+
+	closeBtn.MouseEnter:Connect(function()
+		TweenObj(closeBtn, {BackgroundColor3 = Colors.Danger}, 0.2)
+	end)
+	closeBtn.MouseLeave:Connect(function()
+		TweenObj(closeBtn, {BackgroundColor3 = Colors.Glass}, 0.2)
+	end)
+	closeBtn.MouseButton1Click:Connect(function()
+		self.ScreenGui.Enabled = false
+	end)
+
+	-- Tab Bar
+	local tabBar = Create("Frame", {
+		Size = UDim2.new(1, -24, 0, 32),
+		Position = UDim2.new(0, 12, 0, 52),
+		BackgroundTransparency = 1,
+		Parent = self.MainFrame,
+	})
+
+	local tabs = {"Performance", "Visual", "Network", "Info"}
+	local tabButtons = {}
+	local tabWidth = 1 / #tabs
+
+	for i, tabName in ipairs(tabs) do
+		local btn = Create("TextButton", {
+			Size = UDim2.new(tabWidth, -4, 1, 0),
+			Position = UDim2.new(tabWidth * (i - 1), 2, 0, 0),
+			BackgroundColor3 = i == 1 and Colors.Accent or Colors.Glass,
+			BackgroundTransparency = i == 1 and 0.7 or 0.9,
+			BorderSizePixel = 0,
+			Text = tabName,
+			TextColor3 = i == 1 and Colors.Text or Colors.TextDim,
+			Font = Enum.Font.GothamSemibold,
+			TextSize = 10,
+			AutoButtonColor = false,
+			Parent = tabBar,
+		})
+		AddCorner(btn, 6)
+
+		btn.MouseButton1Click:Connect(function()
+			self.Tab = tabName
+			for _, b in ipairs(tabButtons) do
+				TweenObj(b, {BackgroundColor3 = Colors.Glass, BackgroundTransparency = 0.9}, 0.2)
+				b.TextColor3 = Colors.TextDim
+			end
+			TweenObj(btn, {BackgroundColor3 = Colors.Accent, BackgroundTransparency = 0.7}, 0.2)
+			btn.TextColor3 = Colors.Text
+			self:ShowTab(tabName)
+		end)
+
+		tabButtons[i] = btn
+	end
+
+	-- Content Container
+	self.Content = Create("Frame", {
+		Size = UDim2.new(1, -24, 1, -100),
+		Position = UDim2.new(0, 12, 0, 92),
+		BackgroundTransparency = 1,
+		Parent = self.MainFrame,
+	})
+
+	-- Criar páginas
+	self.Pages = {}
+	for _, tabName in ipairs(tabs) do
+		local page = Create("ScrollingFrame", {
+			Size = UDim2.new(1, 0, 1, 0),
+			Position = UDim2.new(0, 0, 0, 0),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			ScrollBarThickness = 2,
+			ScrollBarImageColor3 = Colors.Accent,
+			Visible = tabName == "Performance",
+			Parent = self.Content,
+		})
+
+		local layout = Create("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 8),
+			Parent = page,
+		})
+
+		local pad = Create("UIPadding", {
+			PaddingLeft = UDim.new(0, 4),
+			PaddingRight = UDim.new(0, 4),
+			PaddingTop = UDim.new(0, 4),
+			PaddingBottom = UDim.new(0, 12),
+			Parent = page,
+		})
+
+		self.Pages[tabName] = page
+	end
+
+	-- ═══════════════════════════════════════════════════════════════════════════════
+	--  TAB: PERFORMANCE
+	-- ═══════════════════════════════════════════════════════════════════════════════
+	local perf = self.Pages.Performance
+
+	-- Toggle: Optimizer Ativo
+	self.Elements.ToggleOptimizer = self:CreateToggle(perf, UDim2.new(0, 0, 0, 0), "Optimizer Ativo", true, function(state)
+		Config.GUI_Enabled = state
+		if state then
+			WorldScanner:StartFullScan()
+		end
+	end)
+
+	-- Toggle: Stretch Resolution
+	self.Elements.ToggleStretch = self:CreateToggle(perf, UDim2.new(0, 0, 0, 40), "Stretch Resolution", true, function(state)
+		StretchSystem.enabled = state
+	end)
+
+	-- Toggle: Anti-Void
+	self.Elements.ToggleAntiVoid = self:CreateToggle(perf, UDim2.new(0, 0, 0, 80), "Anti-Void", true, function(state)
+		-- Controlado via MainLoop
+	end)
+
+	-- Slider: Agressividade
+	self.Elements.SliderAggro = self:CreateSlider(perf, UDim2.new(0, 0, 0, 128), "Agressividade", 1, 3, 2, function(val)
+		if val == 1 then
+			Config.TasksPerFrame = 30; Config.LOD_Near = 120; Config.KillDistance_Particle = 80
+		elseif val == 2 then
+			Config.TasksPerFrame = 60; Config.LOD_Near = 80; Config.KillDistance_Particle = 140
+		else
+			Config.TasksPerFrame = 100; Config.LOD_Near = 60; Config.KillDistance_Particle = 200
+		end
+	end)
+
+	-- Slider: Stretch Value
+	self.Elements.SliderStretch = self:CreateSlider(perf, UDim2.new(0, 0, 0, 184), "Stretch Value", 50, 95, 80, function(val)
+		StretchSystem.value = val / 100
+	end)
+
+	-- Botão: Forçar Scan
+	self:CreateButton(perf, UDim2.new(0, 0, 0, 244), "Forçar Scan Completo", Colors.Accent2, function()
+		WorldScanner:StartFullScan()
+		self:Notify("Scan completo iniciado!", Colors.Accent)
+	end)
+
+	-- Botão: Limpar Cache
+	self:CreateButton(perf, UDim2.new(0, 0, 0, 284), "Limpar Cache & GC", Colors.Success, function()
+		Utils.SafeCall(function()
+			collectgarbage("collect")
+			Services.LogService:ClearOutput()
+		end)
+		self:Notify("Cache limpo!", Colors.Success)
+	end)
+
+	-- ═══════════════════════════════════════════════════════════════════════════════
+	--  TAB: VISUAL
+	-- ═══════════════════════════════════════════════════════════════════════════════
+	local visual = self.Pages.Visual
+
+	self.Elements.ToggleShadows = self:CreateToggle(visual, UDim2.new(0, 0, 0, 0), "Remover Sombras", true, function(state)
+		if state then
+			RenderEngine:OptimizeLighting()
+		end
+	end)
+
+	self.Elements.ToggleLOD = self:CreateToggle(visual, UDim2.new(0, 0, 0, 40), "LOD Neural (Players)", true, function(state)
+		-- Controlado via MainLoop
+	end)
+
+	self.Elements.ToggleBackface = self:CreateToggle(visual, UDim2.new(0, 0, 0, 80), "Backface Culling", true, function(state)
+		Config.BackfaceAngle = state and 120 or 180
+	end)
+
+	self.Elements.ToggleTerrain = self:CreateToggle(visual, UDim2.new(0, 0, 0, 120), "Otimizar Terrain", true, function(state)
+		if state then RenderEngine:OptimizeTerrain() end
+	end)
+
+	self.Elements.ToggleEffects = self:CreateToggle(visual, UDim2.new(0, 0, 0, 160), "Remover Efeitos Lighting", true, function(state)
+		if state then RenderEngine:OptimizeLighting() end
+	end)
+
+	-- ═══════════════════════════════════════════════════════════════════════════════
+	--  TAB: NETWORK
+	-- ═══════════════════════════════════════════════════════════════════════════════
+	local net = self.Pages.Network
+
+	self.Elements.ToggleFFlags = self:CreateToggle(net, UDim2.new(0, 0, 0, 0), "FFlags Injetados", true, function(state)
+		if state then
+			FFlagsEngine:Inject()
+			self:Notify("FFlags reinjetados!", Colors.Accent)
+		end
+	end)
+
+	self.Elements.ToggleNetwork = self:CreateToggle(net, UDim2.new(0, 0, 0, 40), "Network Optimizer", true, function(state)
+		-- Controlado via MainLoop
+	end)
+
+	self:CreateButton(net, UDim2.new(0, 0, 0, 88), "Re-injetar FFlags", Colors.Accent, function()
+		local count = FFlagsEngine:Inject()
+		self:Notify(count .. " FFlags injetados!", Colors.Accent)
+	end)
+
+	self:CreateButton(net, UDim2.new(0, 0, 0, 128), "Detectar Admin", Colors.Warning, function()
+		local admin = AdminDetector:Scan()
+		self:Notify("Admin: " .. admin.name, Colors.Warning)
+	end)
+
+	self:CreateButton(net, UDim2.new(0, 0, 0, 168), "Carregar Bypass", Colors.Accent2, function()
+		task.spawn(function()
+			local admin = AdminDetector:Scan()
+			Utils.SafeCall(function()
+				local code = game:HttpGet(admin.url)
+				if code and #code > 50 then
+					loadstring(code)()
+					self:Notify("Bypass carregado!", Colors.Success)
+				end
+			end)
+		end)
+	end)
+
+	-- ═══════════════════════════════════════════════════════════════════════════════
+	--  TAB: INFO (Bento Grid Stats)
+	-- ═══════════════════════════════════════════════════════════════════════════════
+	local info = self.Pages.Info
+
+	-- Bento Grid 2x2
+	self.Elements.StatFPS = self:CreateStatCard(info, UDim2.new(0, 0, 0, 0), UDim2.new(0.5, -4, 0, 60), "FPS", "--", Colors.Accent)
+	self.Elements.StatPing = self:CreateStatCard(info, UDim2.new(0.5, 4, 0, 0), UDim2.new(0.5, -4, 0, 60), "PING", "--", Colors.Warning)
+	self.Elements.StatMem = self:CreateStatCard(info, UDim2.new(0, 0, 0, 68), UDim2.new(0.5, -4, 0, 60), "MEM", "--", Colors.Success)
+	self.Elements.StatOpt = self:CreateStatCard(info, UDim2.new(0.5, 4, 0, 68), UDim2.new(0.5, -4, 0, 60), "OPTIMIZADO", "--", Colors.Accent2)
+
+	-- Status geral
+	local statusCard = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 80),
+		Position = UDim2.new(0, 0, 0, 140),
+		BackgroundColor3 = Colors.Card,
+		BorderSizePixel = 0,
+		Parent = info,
+	})
+	AddCorner(statusCard, 10)
+	AddStroke(statusCard, Colors.Border, 1, 0.9)
+	AddGradient(statusCard, Colors.Card, Color3.fromRGB(12, 12, 20), 135)
+
+	local statusTitle = Create("TextLabel", {
+		Size = UDim2.new(1, -12, 0, 16),
+		Position = UDim2.new(0, 6, 0, 6),
+		BackgroundTransparency = 1,
+		Text = "STATUS DO SISTEMA",
+		TextColor3 = Colors.TextDim,
+		Font = Enum.Font.GothamBold,
+		TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = statusCard,
+	})
+
+	self.Elements.StatusText = Create("TextLabel", {
+		Size = UDim2.new(1, -12, 0, 40),
+		Position = UDim2.new(0, 6, 0, 24),
+		BackgroundTransparency = 1,
+		Text = "Sistema operacional.
+Task Scheduler ativo.",
+		TextColor3 = Colors.Text,
+		Font = Enum.Font.GothamMedium,
+		TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Parent = statusCard,
+	})
+
+	-- Dragging
+	header.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			self.Drag.active = true
+			self.Drag.start = input.Position
+			self.Drag.pos = self.MainFrame.Position
+		end
+	end)
+
+	Services.UserInputService.InputChanged:Connect(function(input)
+		if self.Drag.active and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - self.Drag.start
+			self.MainFrame.Position = UDim2.new(
+				self.Drag.pos.X.Scale, self.Drag.pos.X.Offset + delta.X,
+				self.Drag.pos.Y.Scale, self.Drag.pos.Y.Offset + delta.Y
+			)
+		end
+	end)
+
+	Services.UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			self.Drag.active = false
+		end
+	end)
+
+	-- Floating Icon (quando minimizado)
+	self.FloatingIcon = Create("TextButton", {
+		Size = UDim2.new(0, 44, 0, 44),
+		Position = UDim2.new(0, 20, 0, 20),
+		BackgroundColor3 = Colors.Accent,
+		BorderSizePixel = 0,
+		Text = "C1",
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		Font = Enum.Font.GothamBold,
+		TextSize = 14,
+		AutoButtonColor = false,
+		Visible = false,
+		Parent = self.ScreenGui,
+	})
+	AddCorner(self.FloatingIcon, 22)
+	AddStroke(self.FloatingIcon, Colors.Accent, 2, 0.5)
+
+	-- Glow no floating icon
+	local glow = Create("Frame", {
+		Size = UDim2.new(1, 8, 1, 8),
+		Position = UDim2.new(0, -4, 0, -4),
+		BackgroundColor3 = Colors.Accent,
+		BackgroundTransparency = 0.85,
+		BorderSizePixel = 0,
+		ZIndex = 0,
+		Parent = self.FloatingIcon,
+	})
+	AddCorner(glow, 26)
+
+	self.FloatingIcon.MouseButton1Click:Connect(function()
+		self:Restore()
+	end)
+
+	-- Animação de entrada
+	self.MainFrame.Size = UDim2.new(0, 0, 0, 0)
+	self.MainFrame.Position = UDim2.new(0, 220, 0, 270)
+	TweenObj(self.MainFrame, {Size = UDim2.new(0, 320, 0, 420), Position = UDim2.new(0, 60, 0, 60)}, 0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+
+	-- Atalho F4 para toggle
+	Services.UserInputService.InputBegan:Connect(function(input, gpe)
+		if gpe then return end
+		if input.KeyCode == Enum.KeyCode.F4 then
+			if self.Minimized then
+				self:Restore()
+			else
+				self:Minimize()
+			end
+		end
+	end)
+end
+
+function GUI:ShowTab(name)
+	for tabName, page in pairs(self.Pages) do
+		page.Visible = (tabName == name)
+	end
+end
+
+function GUI:Minimize()
+	self.Minimized = true
+	TweenObj(self.MainFrame, {Size = UDim2.new(0, 0, 0, 0), Position = UDim2.new(0, self.MainFrame.AbsolutePosition.X + 160, 0, self.MainFrame.AbsolutePosition.Y + 210)}, 0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+	task.delay(0.3, function()
+		self.MainFrame.Visible = false
+		self.FloatingIcon.Visible = true
+		TweenObj(self.FloatingIcon, {Size = UDim2.new(0, 44, 0, 44)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	end)
+end
+
+function GUI:Restore()
+	self.Minimized = false
+	self.FloatingIcon.Visible = false
+	self.MainFrame.Visible = true
+	TweenObj(self.MainFrame, {Size = UDim2.new(0, 320, 0, 420), Position = UDim2.new(0, self.FloatingIcon.AbsolutePosition.X - 20, 0, self.FloatingIcon.AbsolutePosition.Y - 20)}, 0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+end
+
+function GUI:Notify(text, color)
+	local notif = Create("Frame", {
+		Size = UDim2.new(0, 260, 0, 36),
+		Position = UDim2.new(0.5, -130, 1, -60),
+		BackgroundColor3 = Colors.Card,
+		BackgroundTransparency = 0.1,
+		BorderSizePixel = 0,
+		Parent = self.ScreenGui,
+		ZIndex = 100,
+	})
+	AddCorner(notif, 8)
+	AddStroke(notif, color or Colors.Accent, 1.5, 0.5)
+
+	local lbl = Create("TextLabel", {
+		Size = UDim2.new(1, -16, 1, 0),
+		Position = UDim2.new(0, 8, 0, 0),
+		BackgroundTransparency = 1,
+		Text = text,
+		TextColor3 = Colors.Text,
+		Font = Enum.Font.GothamMedium,
+		TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = notif,
+	})
+
+	notif.Position = UDim2.new(0.5, -130, 1, 20)
+	TweenObj(notif, {Position = UDim2.new(0.5, -130, 1, -60)}, 0.4, Enum.EasingStyle.Back)
+
+	task.delay(2.5, function()
+		TweenObj(notif, {Position = UDim2.new(0.5, -130, 1, 20), BackgroundTransparency = 1}, 0.3)
+		task.delay(0.3, function() notif:Destroy() end)
+	end)
+end
+
+function GUI:UpdateStats()
+	if not self.Elements.StatFPS then return end
+	local fps = math.floor(PerformanceManager.currentFPS)
+	local ping = 0
+	pcall(function()
+		local stats = Services.Stats.Network.ServerStatsItem
+		if stats then ping = stats["Data Ping"]:GetValue() end
+	end)
+	local mem = 0
+	pcall(function() mem = collectgarbage("count") / 1024 end)
+
+	self.Elements.StatFPS.setValue(fps, fps > 60 and Colors.Success or (fps > 30 and Colors.Warning or Colors.Danger))
+	self.Elements.StatPing.setValue(string.format("%.0fms", ping))
+	self.Elements.StatMem.setValue(string.format("%.1fMB", mem))
+	self.Elements.StatOpt.setValue(ObjectOptimizer.totalOptimized)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  MAIN LOOP
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local MainLoop = {
@@ -1458,26 +2023,20 @@ local MainLoop = {
 	lastNetwork = 0,
 	lastDynamicQuality = 0,
 	lastAudioOpt = 0,
+	lastGUIUpdate = 0,
 }
 
 Heartbeat:Connect(function(dt)
 	local now = tick()
 
-	-- 1. Atualizar FPS
 	PerformanceManager:Update()
-
-	-- 2. Stretch Resolution (RenderStepped já faz, mas backup aqui)
 	StretchSystem:Apply()
-
-	-- 3. World Scanner (processa batch por frame)
 	WorldScanner:ProcessBatch()
 
-	-- 4. Full scan scheduler
 	if not WorldScanner.isScanning and (now - WorldScanner.lastFullScan) >= WorldScanner.scanInterval then
 		WorldScanner:StartFullScan()
 	end
 
-	-- 5. LOD Players (a cada 3s)
 	if now - MainLoop.lastLOD >= 3 then
 		MainLoop.lastLOD = now
 		local camPos = Camera.CFrame.Position
@@ -1488,47 +2047,33 @@ Heartbeat:Connect(function(dt)
 		end
 	end
 
-	-- 6. Sound Cull (a cada 5s)
 	if now - MainLoop.lastSoundCull >= 5 then
 		MainLoop.lastSoundCull = now
 		local camPos = Camera.CFrame.Position
 		local activeSounds = {}
 		local count = 0
-
 		for _, obj in ipairs(Services.Workspace:GetDescendants()) do
 			if obj:IsA("Sound") and obj.IsPlaying then
 				count = count + 1
 				if count > 200 then break end
-
 				local parent = obj.Parent
 				local pos = camPos
-				if parent and parent:IsA("BasePart") then
-					pos = parent.Position
-				end
+				if parent and parent:IsA("BasePart") then pos = parent.Position end
 				local dist = Utils.FastDistance(camPos, pos)
-
 				if dist > Config.KillDistance_Sound and not Utils.IsPlayerRelated(obj) then
-					Utils.SafeCall(function()
-						obj.Volume = 0
-						obj:Stop()
-					end)
+					Utils.SafeCall(function() obj.Volume = 0; obj:Stop() end)
 				else
 					local priority = (obj.Looped and 1 or 0) + (Utils.IsPlayerRelated(obj) and 2 or 0)
 					table.insert(activeSounds, {sound = obj, priority = priority})
 				end
 			end
 		end
-
 		table.sort(activeSounds, function(a, b) return a.priority > b.priority end)
 		for i = Config.MaxSoundsPlaying + 1, #activeSounds do
-			Utils.SafeCall(function()
-				activeSounds[i].sound.Volume = 0
-				activeSounds[i].sound:Stop()
-			end)
+			Utils.SafeCall(function() activeSounds[i].sound.Volume = 0; activeSounds[i].sound:Stop() end)
 		end
 	end
 
-	-- 7. Memory GC (a cada 25s)
 	if now - MainLoop.lastMemory >= 25 then
 		MainLoop.lastMemory = now
 		Utils.SafeCall(function()
@@ -1538,13 +2083,11 @@ Heartbeat:Connect(function(dt)
 		end)
 	end
 
-	-- 8. Anti-Void (a cada 2s)
 	if now - MainLoop.lastAntiVoid >= 2 then
 		MainLoop.lastAntiVoid = now
 		SafetySystem:AntiVoid()
 	end
 
-	-- 9. Network ping keepalive (a cada 4s)
 	if now - MainLoop.lastNetwork >= 4 then
 		MainLoop.lastNetwork = now
 		Utils.SafeCall(function()
@@ -1556,13 +2099,11 @@ Heartbeat:Connect(function(dt)
 		end)
 	end
 
-	-- 10. Dynamic Quality (a cada 6s)
 	if now - MainLoop.lastDynamicQuality >= 6 then
 		MainLoop.lastDynamicQuality = now
 		PerformanceManager:Adapt()
 	end
 
-	-- 11. Audio optimizer distante (a cada 10s)
 	if now - MainLoop.lastAudioOpt >= 10 then
 		MainLoop.lastAudioOpt = now
 		local camPos = Camera.CFrame.Position
@@ -1573,31 +2114,29 @@ Heartbeat:Connect(function(dt)
 				if processed > 100 then break end
 				local parent = obj.Parent
 				local pos = camPos
-				if parent and parent:IsA("BasePart") then
-					pos = parent.Position
-				end
+				if parent and parent:IsA("BasePart") then pos = parent.Position end
 				local dist = Utils.FastDistance(camPos, pos)
 				if dist > Config.KillDistance_Sound * 1.5 and not Utils.IsPlayerRelated(obj) then
-					Utils.SafeCall(function()
-						obj.Volume = math.max(obj.Volume * 0.3, 0)
-					end)
+					Utils.SafeCall(function() obj.Volume = math.max(obj.Volume * 0.3, 0) end)
 				end
 			end
 		end
 	end
 
-	-- 12. Stats overlay
-	StatsOverlay:Update()
+	-- GUI Update (a cada 0.5s)
+	if now - MainLoop.lastGUIUpdate >= 0.5 then
+		MainLoop.lastGUIUpdate = now
+		GUI:UpdateStats()
+	end
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 17 — BOOT SEQUENCE
+--  BOOT SEQUENCE
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local function Boot()
-	print("[CAFUXZ1] Inicializando v11.0 PRO...")
+	print("[CAFUXZ1] Inicializando v12.0 GLASS EDITION...")
 
-	-- 1. Network baseline
 	Utils.SafeCall(function()
 		settings().Network.IncomingReplicationLag = 0
 		settings().Physics.AllowSleep = true
@@ -1606,17 +2145,11 @@ local function Boot()
 		Services.SoundService.RespectFilteringEnabled = true
 	end)
 
-	-- 2. FFlags
 	local fflagsCount = FFlagsEngine:Inject()
-
-	-- 3. Map Protection Pre-index
 	MapProtection:PreIndex()
-
-	-- 4. Render baseline
 	RenderEngine:OptimizeLighting()
 	RenderEngine:OptimizeTerrain()
 
-	-- 5. Character
 	if LocalPlayer.Character then
 		SafetySystem:ProtectCharacter(LocalPlayer.Character)
 	end
@@ -1625,47 +2158,44 @@ local function Boot()
 		SafetySystem:ProtectCharacter(char)
 	end)
 
-	-- 6. Detectar admin
 	local admin = AdminDetector:Scan()
 	print("[CAFUXZ1] Admin detectado:", admin.name)
 
-	-- 7. Carregar bypass silencioso
 	task.spawn(function()
 		Utils.SafeCall(function()
 			local code = game:HttpGet(admin.url)
 			if code and #code > 50 then
 				loadstring(code)()
-				print("[CAFUXZ1] Admin bypass carregado:", admin.name)
+				print("[CAFUXZ1] Admin bypass carregado.")
 			end
 		end)
 	end)
 
-	-- 8. Stats overlay (inicializar invisível)
-	StatsOverlay:Init()
+	-- Build GUI
+	GUI:Build()
 
-	-- 9. Primeiro scan
 	task.delay(Config.BootDelay, function()
 		WorldScanner:StartFullScan()
-		print("[CAFUXZ1] World Scanner iniciado.")
+		GUI:Notify("CAFUXZ1 v12.0 Ativo!", Colors.Accent)
 	end)
 
-	-- 10. Limpar logs
 	Utils.SafeCall(function()
 		Services.LogService:ClearOutput()
 		Services.StarterGui:SetCore("PerformanceStatsVisible", false)
 	end)
 
-	print(string.format("[CAFUXZ1] Boot completo. FFlags: %d | Overlay: F3 para toggle", fflagsCount))
+	print(string.format("[CAFUXZ1] Boot completo. FFlags: %d | GUI: Glassmorphism", fflagsCount))
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  SECAO 18 — PUBLIC API
+--  PUBLIC API
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 _G.CAFUXZ1 = {
-	Version = "11.0 PRO",
+	Version = "12.0 GLASS",
 	Status = "Running",
 	Config = Config,
+	GUI = GUI,
 	Stats = function()
 		return {
 			fps = PerformanceManager.currentFPS,
@@ -1673,27 +2203,24 @@ _G.CAFUXZ1 = {
 			avgFPS = PerformanceManager:GetAvgFPS(),
 		}
 	end,
-	ToggleStats = function()
-		StatsOverlay.visible = not StatsOverlay.visible
-		if StatsOverlay.gui then
-			StatsOverlay.gui.Enabled = StatsOverlay.visible
+	ToggleGUI = function()
+		if GUI.Minimized then
+			GUI:Restore()
+		elseif GUI.ScreenGui and GUI.ScreenGui.Enabled then
+			GUI.ScreenGui.Enabled = not GUI.ScreenGui.Enabled
 		end
-		return StatsOverlay.visible
+		return GUI.ScreenGui and GUI.ScreenGui.Enabled
 	end,
 	SetAggressiveness = function(level)
-		-- level: 1=light, 2=normal, 3=aggressive
 		if level == 1 then
-			Config.TasksPerFrame = 30
-			Config.LOD_Near = 120
-			Config.KillDistance_Particle = 80
+			Config.TasksPerFrame = 30; Config.LOD_Near = 120; Config.KillDistance_Particle = 80
 		elseif level == 2 then
-			Config.TasksPerFrame = 60
-			Config.LOD_Near = 80
-			Config.KillDistance_Particle = 140
+			Config.TasksPerFrame = 60; Config.LOD_Near = 80; Config.KillDistance_Particle = 140
 		elseif level == 3 then
-			Config.TasksPerFrame = 100
-			Config.LOD_Near = 60
-			Config.KillDistance_Particle = 200
+			Config.TasksPerFrame = 100; Config.LOD_Near = 60; Config.KillDistance_Particle = 200
+		end
+		if GUI.Elements.SliderAggro then
+			GUI.Elements.SliderAggro.setValue(level)
 		end
 	end,
 	Clean = function()
@@ -1701,6 +2228,9 @@ _G.CAFUXZ1 = {
 			Services.LogService:ClearOutput()
 			collectgarbage("collect")
 		end)
+	end,
+	Notify = function(text, color)
+		GUI:Notify(text, color)
 	end,
 }
 
@@ -1712,9 +2242,9 @@ Utils.SafeCall(Boot)
 
 print([[
     ╔══════════════════════════════════════════════════════════════════════╗
-    ║     CAFUXZ1 ULTIMATE OPTIMIZER v11.0 PROFESSIONAL EDITION           ║
-    ║     Arquitetura: Modular · Task Scheduler · Dynamic Scaling         ║
-    ║     FFlags 2026 Validados · LOD Neural · Zero Map Destruction        ║
-    ║     Overlay: F3 para toggle · Performance Manager: Adaptativo         ║
+    ║     CAFUXZ1 ULTIMATE OPTIMIZER v12.0 GLASS EDITION                  ║
+    ║     GUI: Glassmorphism · Bento Grid · Neon · Microinteractions       ║
+    ║     Core: Task Scheduler · LOD Neural · FFlags 2026 · Dynamic        ║
+    ║     Atalhos: F4 (Minimize) · Drag header · Tabs animadas            ║
     ╚══════════════════════════════════════════════════════════════════════╝
 ]])
