@@ -1,1913 +1,826 @@
--- ═══════════════════════════════════════════════════════════════
---  CAFUXZ1 HUB v16.0 - PARTE 1/5
---  Sistema Base | UI Library (WindUI) | Configurações Globais
---  Baseado na arquitetura RedzLibV5
--- ═══════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════
+--  KAVROYX HUB V11 — Reach & Ball Touch System
+--  Estilo: Junkie Key System (Dark Theme)
+-- ═══════════════════════════════════════════════════
 
-if not game:IsLoaded() then game.Loaded:Wait() end
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
 
-local CAFUXZ1 = {}
-local CFX = (getgenv and getgenv()) or (getrenv and getrenv()) or getfenv()
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
--- ═══════════════════════════════════════════════════════════════
---  SERVIÇOS DO ROBLOX
--- ═══════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════
+--  CONFIGURAÇÕES DE ESTILO (Junkie Style)
+-- ═══════════════════════════════════════════════════
+local STYLE = {
+    -- Cores principais (estilo Junkie)
+    bgColor = Color3.fromRGB(20, 30, 50),
+    topColor = Color3.fromRGB(30, 60, 100),
+    inputBg = Color3.fromRGB(15, 35, 65),
+    btnColor = Color3.fromRGB(30, 80, 150),
+    btnHover = Color3.fromRGB(40, 100, 180),
+    accentColor = Color3.fromRGB(90, 170, 255),
+    textColor = Color3.fromRGB(200, 230, 255),
+    subTextColor = Color3.fromRGB(150, 170, 200),
 
-local Services = {
-    Players = game:GetService("Players"),
-    RunService = game:GetService("RunService"),
-    TweenService = game:GetService("TweenService"),
-    HttpService = game:GetService("HttpService"),
-    UserInputService = game:GetService("UserInputService"),
-    Workspace = game:GetService("Workspace"),
-    CoreGui = game:GetService("CoreGui"),
-    Lighting = game:GetService("Lighting"),
-    ReplicatedStorage = game:GetService("ReplicatedStorage"),
-    CollectionService = game:GetService("CollectionService"),
-    VirtualInputManager = game:GetService("VirtualInputManager"),
-    TeleportService = game:GetService("TeleportService"),
-    StarterGui = game:GetService("StarterGui"),
+    -- Bordas e cantos
+    cornerRadius = UDim.new(0, 10),
+    btnCornerRadius = UDim.new(0, 8),
+    inputCornerRadius = UDim.new(0, 6),
+
+    -- Logo e imagens
+    logoId = "rbxassetid://88380080222477",
+    closeIcon = "rbxassetid://122931434733842",
+
+    -- Fontes
+    titleFont = Enum.Font.GothamBold,
+    textFont = Enum.Font.Gotham,
+    codeFont = Enum.Font.Code,
 }
 
-local LocalPlayer = Services.Players.LocalPlayer
-local Camera = Services.Workspace.CurrentCamera
-local Mouse = LocalPlayer:GetMouse()
-
--- ═══════════════════════════════════════════════════════════════
---  CONFIGURAÇÕES GLOBAIS (vu38 equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-CFX.Settings = CFX.CFX_Settings or {
-    -- Farm/Kick Settings
-    AutoFarm = false,
-    FarmMode = "Up",
-    FarmDistance = 15,
-    FarmPos = Vector3.new(0, 15, 0),
-    BringMobs = true,
-    BringDistance = 250,
-    
-    -- GK Settings
-    GK_Enabled = false,
-    GK_Size = Vector3.new(6, 12, 6),
-    GK_Transparency = 1,
-    GK_BorderOnly = true,
-    GK_Position = "Behind",
-    
-    -- Ball Settings
-    Ball_Color = Color3.fromRGB(255, 255, 255),
-    Ball_Glow = false,
-    Ball_Trail = false,
-    
-    -- Curved Kick
-    CurvedKick = true,
-    CurveIntensity = 1.5,
-    CurveRandomness = 0.3,
-    
-    -- Screen Stretch
-    Stretch_Enabled = false,
-    Stretch_Resolution = 0.5,
-    RemoveTextures = true,
-    OptimizeMaterials = true,
-    
-    -- Auto Catch
-    AutoCatch = false,
-    CatchRange = 15,
-    
-    -- Visual
-    ESP_Enabled = false,
-    ESP_Ball = true,
-    ESP_Players = false,
-    ESP_GK = true,
-    
-    -- Misc
-    UIScale = "Large",
-    MinimizeKey = Enum.KeyCode.RightShift,
-    Theme = "Dark",
+-- ═══════════════════════════════════════════════════
+--  CONFIGURAÇÕES DO SISTEMA
+-- ═══════════════════════════════════════════════════
+local CONFIG = {
+    reach = 10,
+    magnetStrength = 0,
+    showReachSphere = true,
+    autoSecondTouch = true,
+    scanCooldown = 1.5,
+    ballNames = { "TPS", "ESA", "MRS", "PRS", "MPS", "SSS", "AIFA", "RBZ" },
+    guiKey = Enum.KeyCode.K,
+    debounceTime = 0.2,
+    sphereTransparency = 0.85,
+    sphereColor = Color3.fromRGB(90, 170, 255),
 }
 
--- ═══════════════════════════════════════════════════════════════
---  SISTEMA DE OPÇÕES ATIVAS (vu45 equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-CFX.Enabled = CFX.CFX_Enabled or setmetatable({}, {
-    __newindex = function(_, key, value)
-        rawset(CFX.Enabled_Raw or {}, key, value or nil)
-        table.clear(CFX.KickFunctions or {})
-        local funcs = CFX.Functions or {}
-        for _, funcData in ipairs(funcs) do
-            if rawget(CFX.Enabled_Raw or {}, funcData.Name) then
-                table.insert(CFX.KickFunctions or {}, funcData)
-            end
-        end
-    end,
-    __index = CFX.Enabled_Raw or {}
-})
-
-CFX.Enabled_Raw = CFX.Enabled_Raw or {}
-CFX.Functions = CFX.Functions or {}
-CFX.KickFunctions = CFX.KickFunctions or {}
-
--- ═══════════════════════════════════════════════════════════════
---  SISTEMA DE CONEXÕES (vu76 equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-CFX.Connections = CFX.CFX_Connections or {}
-local Connections = CFX.Connections
-
-local function ClearConnections()
-    for _, conn in ipairs(Connections) do
-        pcall(function() conn:Disconnect() end)
-    end
-    table.clear(Connections)
-end
-
-local function AddConnection(conn)
-    table.insert(Connections, conn)
-    return conn
-end
-
--- ═══════════════════════════════════════════════════════════════
---  SISTEMA DE HTTP / LOADSTRING (vu33/vu55 equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-local function GetExecutor()
-    return identifyexecutor and identifyexecutor() or "Unknown"
-end
-
-local function CFX_Error(msg)
-    CFX.CFX_OnFarm = false
-    CFX.CFX_loadedFarm = nil
-    local errorMsg = Instance.new("Message", Services.Workspace)
-    errorMsg.Text = "[CAFUXZ1] ERROR: " .. msg
-    CFX.CFX_ErrorMsg = errorMsg
-    return error(msg, 2)
-end
-
-function CFX_HttpGet(url)
-    local success, result = pcall(game.HttpGet, game, url)
-    if success then
-        return result, url
-    else
-        return CFX_Error(string.format("[HTTP] [%s] Falha ao carregar: %s\n{{ %s }}", GetExecutor(), url, result))
-    end
-end
-
-function CFX_Loadstring(url, append, args)
-    local source, srcUrl = CFX_HttpGet(url)
-    local func, err = loadstring(source .. (append or ""))
-    if type(func) ~= "function" then
-        return CFX_Error(string.format("[LOADSTRING] [%s] Erro de sintaxe: %s\n{{ %s }}", GetExecutor(), srcUrl, err))
-    end
-    local success, result
-    if args then
-        success, result = pcall(func, unpack(args))
-    else
-        success, result = pcall(func)
-    end
-    if success then
-        return result
-    else
-        CFX_Error(string.format("[EXECUTE] [%s] Erro: %s\n{{ %s }}", GetExecutor(), srcUrl, result))
-    end
-end
-
--- ═══════════════════════════════════════════════════════════════
---  SISTEMA DE TWEEN CUSTOM (vu104 equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-local TweenSystem = {}
-TweenSystem.__index = TweenSystem
-local ActiveTweens = {}
-
-function TweenSystem.new(obj, time, prop, value, easingStyle)
-    local self = setmetatable({}, TweenSystem)
-    easingStyle = easingStyle or Enum.EasingStyle.Linear
-    self.tween = Services.TweenService:Create(obj, TweenInfo.new(time, easingStyle), { [prop] = value })
-    self.tween:Play()
-    self.value = value
-    self.object = obj
-    if ActiveTweens[obj] then
-        ActiveTweens[obj]:destroy()
-    end
-    ActiveTweens[obj] = self
-    return self
-end
-
-function TweenSystem:destroy()
-    if self.tween then
-        self.tween:Pause()
-        self.tween:Destroy()
-    end
-    ActiveTweens[self.object] = nil
-    setmetatable(self, nil)
-end
-
-function TweenSystem.stop(obj)
-    if ActiveTweens[obj] then
-        ActiveTweens[obj]:destroy()
-    end
-end
-
--- ═══════════════════════════════════════════════════════════════
---  WINDUI LIBRARY INTEGRATION (vu81 equivalente)
---  Carrega a UI library personalizada
--- ═══════════════════════════════════════════════════════════════
-
-local WindUI = nil
-local CFXModule = nil
-
--- URLs da library (pode ser substituído por loadstring local)
-local CFX_Urls = {
-    Owner = "https://raw.githubusercontent.com/Rayfaller/",
-    Repository = "https://raw.githubusercontent.com/Rayfaller/antilag/refs/heads/main/",
-    LibraryUrl = "https://raw.githubusercontent.com/Rayfaller/antilag/refs/heads/main/test.lua",
+-- ═══════════════════════════════════════════════════
+--  ESTADO
+-- ═══════════════════════════════════════════════════
+local State = {
+    balls = {},
+    lastRefresh = 0,
+    reachSphere = nil,
+    gui = nil,
+    reachLabel = nil,
+    menuVisible = true,
+    debounces = {},
+    connections = {},
+    notifActive = {},
+    notifGui = nil,
 }
 
-function CAFUXZ1.InitializeLibrary()
-    -- Carrega a UI base (WindUI/RedzLibV5 adaptada)
-    WindUI = CFX_Loadstring(CFX_Urls.LibraryUrl)
-    
-    -- Módulo de utilidades do CAFUXZ1
-    CFXModule = {
-        GameData = {
-            Sea = 1,
-            MaxLevel = 2550,
-        },
-        IsAlive = function(char)
-            return char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0
-        end,
-        FireRemote = function(name, ...)
-            local remote = Services.ReplicatedStorage:FindFirstChild(name, true)
-            if remote then
-                return remote:InvokeServer(...)
-            end
-        end,
-        Inventory = {
-            Count = {},
-            Unlocked = {},
-            Mastery = {},
-        },
-        Enemies = {
-            IsSpawned = function(name) return true end,
-        },
-        RunFunctions = {
-            FarmQueue = function(funcs)
-                while CFX.CFX_OnFarm do
-                    for _, funcData in ipairs(funcs) do
-                        if CFX.Enabled[funcData.Name] then
-                            local status, err = pcall(funcData.Function)
-                            if not status then
-                                warn("[CAFUXZ1] Farm error: " .. tostring(err))
-                            end
-                        end
-                    end
-                    task.wait()
-                end
-            end,
-            LibraryToggle = function(enabledOptions, toggleRefs)
-                return function(tab, config, optionKey)
-                    local name = config[1]
-                    local desc = config[2] or ""
-                    local default = config[3] or false
-                    
-                    local toggle = tab:AddToggle({
-                        Title = name,
-                        Description = desc,
-                        Default = CFX.Settings[optionKey] or default,
-                        Callback = function(value)
-                            CFX.Enabled[optionKey] = value
-                            CFX.Settings[optionKey] = value
-                        end
-                    })
-                    
-                    toggleRefs[optionKey] = toggle
-                    return toggle
-                end
-            end,
-        },
-    }
-    
-    CFX.WindUI = WindUI
-    CFX.CFXModule = CFXModule
+-- BALL NAME SET (O(1) lookup)
+local BALL_NAME_SET = {}
+for _, name in ipairs(CONFIG.ballNames) do
+    BALL_NAME_SET[name] = true
 end
 
--- ═══════════════════════════════════════════════════════════════
---  SISTEMA DE NOTIFICAÇÃO (vu101 equivalente)
--- ═══════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════
+--  FUNÇÕES UTILITÁRIAS
+-- ═══════════════════════════════════════════════════
 
-local NotifySystem = {
-    Notifications = {},
-    
-    Send = function(title, text, duration, type)
-        duration = duration or 3
-        type = type or "Info"
-        
-        if WindUI and WindUI.Notify then
-            WindUI:Notify({
-                Title = title,
-                Content = text,
-                Duration = duration,
-                Type = type
-            })
-        else
-            -- Fallback
-            local notif = Instance.new("ScreenGui")
-            notif.Name = "CAFUXZ1_Notify"
-            notif.Parent = Services.CoreGui
-            
-            local frame = Instance.new("Frame")
-            frame.Size = UDim2.new(0, 300, 0, 80)
-            frame.Position = UDim2.new(1, -320, 0, 20 + (#NotifySystem.Notifications * 90))
-            frame.BackgroundColor3 = type == "Error" and Color3.fromRGB(180, 50, 50) or 
-                                      type == "Success" and Color3.fromRGB(50, 180, 80) or 
-                                      Color3.fromRGB(40, 40, 60)
-            frame.BorderSizePixel = 0
-            frame.Parent = notif
-            
-            local corner = Instance.new("UICorner")
-            corner.CornerRadius = UDim.new(0, 8)
-            corner.Parent = frame
-            
-            local titleLabel = Instance.new("TextLabel")
-            titleLabel.Size = UDim2.new(1, -20, 0, 25)
-            titleLabel.Position = UDim2.new(0, 10, 0, 5)
-            titleLabel.BackgroundTransparency = 1
-            titleLabel.Text = title
-            titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            titleLabel.Font = Enum.Font.GothamBold
-            titleLabel.TextSize = 14
-            titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-            titleLabel.Parent = frame
-            
-            local textLabel = Instance.new("TextLabel")
-            textLabel.Size = UDim2.new(1, -20, 0, 40)
-            textLabel.Position = UDim2.new(0, 10, 0, 30)
-            textLabel.BackgroundTransparency = 1
-            textLabel.Text = text
-            textLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-            textLabel.Font = Enum.Font.Gotham
-            textLabel.TextSize = 12
-            textLabel.TextXAlignment = Enum.TextXAlignment.Left
-            textLabel.TextWrapped = true
-            textLabel.Parent = frame
-            
-            table.insert(NotifySystem.Notifications, notif)
-            
-            task.delay(duration, function()
-                pcall(function()
-                    TweenSystem.new(frame, 0.5, "Position", UDim2.new(1, 0, frame.Position.Y.Scale, frame.Position.Y.Offset))
-                    task.wait(0.5)
-                    notif:Destroy()
-                end)
-                for i, n in ipairs(NotifySystem.Notifications) do
-                    if n == notif then
-                        table.remove(NotifySystem.Notifications, i)
-                        break
-                    end
-                end
-            end)
-        end
-    end,
-}
-
--- ═══════════════════════════════════════════════════════════════
---  EXPORTAÇÃO GLOBAL
--- ═══════════════════════════════════════════════════════════════
-
-CFX.CAFUXZ1 = CAFUXZ1
-CFX.NotifySystem = NotifySystem
-CFX.TweenSystem = TweenSystem
-CFX.Services = Services
-CFX.LocalPlayer = LocalPlayer
-CFX.Camera = Camera
-CFX.Mouse = Mouse
-
-print("[CAFUXZ1] Parte 1/5 carregada com sucesso!")
-print("[CAFUXZ1] Sistema Base + WindUI + Configurações inicializados.")
-
--- Retorna o controller para as próximas partes
-return CAFUXZ1
-
--- ═══════════════════════════════════════════════════════════════
---  CAFUXZ1 HUB v16.0 - PARTE 2/5
---  Managers: CurvedKick | GK Reach | Ball System | Auto Catch
--- ═══════════════════════════════════════════════════════════════
-
-local CFX = (getgenv and getgenv()) or (getrenv and getrenv()) or getfenv()
-local CAFUXZ1 = CFX.CAFUXZ1
-local Services = CFX.Services
-local LocalPlayer = CFX.LocalPlayer
-local TweenSystem = CFX.TweenSystem
-local NotifySystem = CFX.NotifySystem
-
--- ═══════════════════════════════════════════════════════════════
---  MANAGER: CURVED KICK SYSTEM (FarmManager equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-local CurvedKickManager = {}
-local BallPhysics = {
-    LastKickTime = 0,
-    KickCooldown = 0.1,
-    ActiveBalls = {},
-}
-
-function CurvedKickManager.Initialize()
-    -- Detecta quando o jogador chuta a bola
-    AddConnection = function(conn) 
-        table.insert(CFX.Connections, conn)
-        return conn
+local function canRun(key, cooldown)
+    local now = tick()
+    if not State.debounces[key] or (now - State.debounces[key]) >= (cooldown or CONFIG.debounceTime) then
+        State.debounces[key] = now
+        return true
     end
-    
-    -- Hook no sistema de chute do jogo
-    AddConnection(Services.RunService.Heartbeat:Connect(function()
-        if not CFX.Settings.CurvedKick then return end
-        
-        local character = LocalPlayer.Character
-        if not character then return end
-        
-        local humanoid = character:FindFirstChild("Humanoid")
-        if not humanoid or humanoid.Health <= 0 then return end
-        
-        -- Detecta bolas próximas
-        for _, obj in ipairs(Services.Workspace:GetDescendants()) do
-            if obj:IsA("BasePart") and obj.Shape == Enum.PartType.Ball then
-                if obj.Parent and obj.Parent.Name ~= LocalPlayer.Name then
-                    local dist = (obj.Position - character:GetPivot().Position).Magnitude
-                    if dist < 8 and tick() - BallPhysics.LastKickTime > BallPhysics.KickCooldown then
-                        -- Aplica física curva
-                        CurvedKickManager.ApplyCurve(obj, character)
-                        BallPhysics.LastKickTime = tick()
-                    end
-                end
-            end
-        end
-    end))
+    return false
 end
 
-function CurvedKickManager.ApplyCurve(ball, character)
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return end
-    
-    local direction = rootPart.CFrame.LookVector
-    local rightVector = rootPart.CFrame.RightVector
-    local upVector = rootPart.CFrame.UpVector
-    
-    -- Intensidade da curva baseada nas configurações
-    local intensity = CFX.Settings.CurveIntensity or 1.5
-    local randomness = CFX.Settings.CurveRandomness or 0.3
-    
-    -- Vetor de curva lateral (efeito de "efeito" na bola)
-    local curveSide = rightVector * (math.random(-100, 100) / 100 * intensity)
-    local curveUp = upVector * (math.random(20, 80) / 100 * intensity)
-    
-    -- Aplica velocidade com curva
-    local baseVelocity = direction * 80 + curveSide * 30 + curveUp * 20
-    
-    -- Usa BodyVelocity ou ajusta diretamente a velocidade
-    local bodyVel = ball:FindFirstChildOfClass("BodyVelocity") or Instance.new("BodyVelocity")
-    bodyVel.Velocity = baseVelocity
-    bodyVel.MaxForce = Vector3.new(50000, 50000, 50000)
-    bodyVel.Parent = ball
-    
-    -- Aplica rotação para efeito visual
-    local bodyAngular = ball:FindFirstChildOfClass("BodyAngularVelocity") or Instance.new("BodyAngularVelocity")
-    bodyAngular.AngularVelocity = Vector3.new(
-        math.random(-50, 50),
-        math.random(-50, 50),
-        math.random(-50, 50)
-    ) * intensity
-    bodyAngular.MaxTorque = Vector3.new(50000, 50000, 50000)
-    bodyAngular.Parent = ball
-    
-    -- Remove após um tempo
-    task.delay(2, function()
-        pcall(function()
-            bodyVel:Destroy()
-            bodyAngular:Destroy()
-        end)
-    end)
-    
-    -- Notificação opcional
-    if CFX.Settings.NotifyOnKick then
-        NotifySystem.Send("Curved Kick", "Efeito aplicado na bola!", 1, "Success")
-    end
-end
-
--- ═══════════════════════════════════════════════════════════════
---  MANAGER: GK REACH SYSTEM (PlayerTeleport/ESP equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-local GKManager = {
-    Cube = nil,
-    SelectionBox = nil,
-    IsVisible = false,
-}
-
-function GKManager.Initialize()
-    GKManager.CreateCube()
-    
-    -- Atualiza posição do GK
-    AddConnection(Services.RunService.RenderStepped:Connect(function()
-        if not CFX.Settings.GK_Enabled then
-            if GKManager.Cube then
-                GKManager.Cube.Parent = nil
-            end
-            return
-        end
-        
-        GKManager.UpdateCubePosition()
-    end))
-end
-
-function GKManager.CreateCube()
-    local cube = Instance.new("Part")
-    cube.Name = "CAFUXZ1_GK_Reach"
-    cube.Shape = Enum.PartType.Block
-    cube.Size = CFX.Settings.GK_Size or Vector3.new(6, 12, 6)
-    cube.Anchored = true
-    cube.CanCollide = false
-    cube.Transparency = CFX.Settings.GK_Transparency or 1
-    cube.Material = Enum.Material.ForceField
-    cube.Color = Color3.fromRGB(0, 150, 255)
-    cube.CastShadow = false
-    
-    -- Cria SelectionBox para bordas visíveis
-    local selectionBox = Instance.new("SelectionBox")
-    selectionBox.Name = "GK_Border"
-    selectionBox.Adornee = cube
-    selectionBox.LineThickness = 0.05
-    selectionBox.Color3 = Color3.fromRGB(0, 200, 255)
-    selectionBox.SurfaceTransparency = 1
-    selectionBox.Parent = cube
-    
-    GKManager.Cube = cube
-    GKManager.SelectionBox = selectionBox
-end
-
-function GKManager.UpdateCubePosition()
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return end
-    
-    if not GKManager.Cube then
-        GKManager.CreateCube()
-    end
-    
-    local cube = GKManager.Cube
-    cube.Parent = Services.Workspace.CurrentCamera -- Ou Workspace
-    
-    -- Posiciona atrás do jogador (GK posição)
-    local offset = CFX.Settings.GK_Position or "Behind"
-    local posOffset = Vector3.new(0, 0, 0)
-    
-    if offset == "Behind" then
-        posOffset = -rootPart.CFrame.LookVector * 3
-    elseif offset == "Front" then
-        posOffset = rootPart.CFrame.LookVector * 3
-    elseif offset == "Center" then
-        posOffset = Vector3.new(0, 0, 0)
-    end
-    
-    local targetCFrame = rootPart.CFrame + posOffset
-    targetCFrame = CFrame.new(targetCFrame.Position) * CFrame.Angles(0, math.atan2(
-        rootPart.CFrame.LookVector.X, 
-        rootPart.CFrame.LookVector.Z
-    ), 0)
-    
-    -- Ajusta altura para cobrir o personagem (cabeça para cima)
-    targetCFrame = targetCFrame + Vector3.new(0, 2, 0)
-    
-    cube.CFrame = targetCFrame
-    cube.Size = CFX.Settings.GK_Size or Vector3.new(6, 12, 6)
-    cube.Transparency = CFX.Settings.GK_Transparency or 1
-    
-    -- Atualiza visibilidade da borda
-    if GKManager.SelectionBox then
-        GKManager.SelectionBox.Visible = CFX.Settings.GK_BorderOnly ~= false
-    end
-end
-
-function GKManager.Destroy()
-    if GKManager.Cube then
-        GKManager.Cube:Destroy()
-        GKManager.Cube = nil
-    end
-end
-
--- ═══════════════════════════════════════════════════════════════
---  MANAGER: BALL SYSTEM (FruitManager equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-local BallManager = {
-    Balls = {},
-    SnowActive = false,
-    OriginalTerrain = nil,
-}
-
-function BallManager.Initialize()
-    -- Detecta bolas no workspace
-    AddConnection(Services.RunService.Heartbeat:Connect(function()
-        BallManager.ScanBalls()
-    end))
-end
-
-function BallManager.ScanBalls()
-    for _, obj in ipairs(Services.Workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and obj.Shape == Enum.PartType.Ball then
-            if not BallManager.Balls[obj] then
-                BallManager.Balls[obj] = true
-                BallManager.ApplyBallStyle(obj)
-            end
-        end
-    end
-end
-
-function BallManager.ApplyBallStyle(ball)
-    if CFX.Settings.Ball_Glow then
-        local pointLight = ball:FindFirstChild("BallGlow") or Instance.new("PointLight")
-        pointLight.Name = "BallGlow"
-        pointLight.Color = CFX.Settings.Ball_Color or Color3.fromRGB(255, 255, 255)
-        pointLight.Brightness = 2
-        pointLight.Range = 10
-        pointLight.Parent = ball
-    end
-    
-    if CFX.Settings.Ball_Trail then
-        local trail = ball:FindFirstChild("BallTrail") or Instance.new("Trail")
-        trail.Name = "BallTrail"
-        trail.Color = ColorSequence.new(CFX.Settings.Ball_Color or Color3.fromRGB(255, 255, 255))
-        trail.Lifetime = 0.5
-        trail.WidthScale = NumberSequence.new(0.5)
-        trail.Parent = ball
-    end
-    
-    ball.Color = CFX.Settings.Ball_Color or Color3.fromRGB(255, 255, 255)
-end
-
-function BallManager.SetBallColor(color)
-    CFX.Settings.Ball_Color = color
-    for ball, _ in pairs(BallManager.Balls) do
-        if ball and ball.Parent then
-            ball.Color = color
-            local glow = ball:FindFirstChild("BallGlow")
-            if glow then
-                glow.Color = color
-            end
-            local trail = ball:FindFirstChild("BallTrail")
-            if trail then
-                trail.Color = ColorSequence.new(color)
-            end
-        end
-    end
-end
-
-function BallManager.ToggleSnow(enable)
-    if enable == BallManager.SnowActive then return end
-    BallManager.SnowActive = enable
-    
-    local terrain = Services.Workspace:FindFirstChildOfClass("Terrain")
-    if not terrain then return end
-    
-    if enable then
-        BallManager.OriginalTerrain = terrain.Material
-        terrain.Material = Enum.Material.Snow
-        -- Adiciona partículas de neve
-        local snowParticles = terrain:FindFirstChild("CAFUXZ1_Snow") or Instance.new("ParticleEmitter")
-        snowParticles.Name = "CAFUXZ1_Snow"
-        snowParticles.Texture = "rbxassetid://241876428"
-        snowParticles.Rate = 50
-        snowParticles.Lifetime = NumberRange.new(3, 5)
-        snowParticles.Speed = NumberRange.new(5, 10)
-        snowParticles.VelocitySpread = 180
-        snowParticles.Parent = terrain
-    else
-        if BallManager.OriginalTerrain then
-            terrain.Material = BallManager.OriginalTerrain
-        end
-        local snow = terrain:FindFirstChild("CAFUXZ1_Snow")
-        if snow then
-            snow:Destroy()
-        end
-    end
-end
-
--- ═══════════════════════════════════════════════════════════════
---  MANAGER: AUTO CATCH SYSTEM (ItemsQuests equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-local AutoCatchManager = {
-    IsCatching = false,
-}
-
-function AutoCatchManager.Initialize()
-    AddConnection(Services.RunService.Heartbeat:Connect(function()
-        if not CFX.Settings.AutoCatch then return end
-        AutoCatchManager.TryCatch()
-    end))
-end
-
-function AutoCatchManager.TryCatch()
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return end
-    
-    local catchRange = CFX.Settings.CatchRange or 15
-    
-    for _, obj in ipairs(Services.Workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and obj.Shape == Enum.PartType.Ball then
-            local dist = (obj.Position - rootPart.Position).Magnitude
-            if dist < catchRange then
-                -- Teleporta a bola para as mãos do jogador
-                local rightHand = character:FindFirstChild("RightHand") or 
-                                  character:FindFirstChild("Right Arm")
-                if rightHand then
-                    obj.CFrame = rightHand.CFrame
-                    obj.Velocity = Vector3.new(0, 0, 0)
-                    
-                    -- Efeito visual
-                    local catchEffect = Instance.new("ParticleEmitter")
-                    catchEffect.Texture = "rbxassetid://258128463"
-                    catchEffect.Rate = 100
-                    catchEffect.Lifetime = NumberRange.new(0.5)
-                    catchEffect.Parent = rightHand
-                    task.delay(0.5, function()
-                        catchEffect:Destroy()
-                    end)
-                end
-            end
-        end
-    end
-end
-
--- ═══════════════════════════════════════════════════════════════
---  MANAGER: ESP SYSTEM (EspManager equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-local ESPManager = {
-    ESPObjects = {},
-}
-
-function ESPManager.Initialize()
-    AddConnection(Services.RunService.RenderStepped:Connect(function()
-        ESPManager.UpdateESP()
-    end))
-end
-
-function ESPManager.UpdateESP()
-    -- ESP para bolas
-    if CFX.Settings.ESP_Ball then
-        for _, obj in ipairs(Services.Workspace:GetDescendants()) do
-            if obj:IsA("BasePart") and obj.Shape == Enum.PartType.Ball then
-                ESPManager.EnsureESP(obj, "Ball", Color3.fromRGB(255, 255, 0))
-            end
-        end
-    end
-    
-    -- ESP para jogadores
-    if CFX.Settings.ESP_Players then
-        for _, player in ipairs(Services.Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Character then
-                local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
-                if rootPart then
-                    ESPManager.EnsureESP(rootPart, player.Name, Color3.fromRGB(255, 0, 0))
-                end
-            end
-        end
-    end
-end
-
-function ESPManager.EnsureESP(part, labelText, color)
-    local espName = "CAFUXZ1_ESP_" .. labelText
-    local existing = part:FindFirstChild(espName)
-    
-    if existing then return end
-    
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = espName
-    billboard.Size = UDim2.new(0, 100, 0, 40)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Parent = part
-    
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.Text = labelText
-    label.TextColor3 = color
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 12
-    label.Parent = billboard
-    
-    -- Adiciona highlight
-    local highlight = Instance.new("Highlight")
-    highlight.Name = espName .. "_HL"
-    highlight.FillColor = color
-    highlight.FillTransparency = 0.8
-    highlight.OutlineColor = color
-    highlight.OutlineTransparency = 0
-    highlight.Parent = part
-end
-
-function ESPManager.Clear()
-    for _, conn in ipairs(CFX.Connections) do
-        if conn and type(conn) == "table" and conn.Disconnect then
-            -- Limpa ESPs
-        end
-    end
-end
-
--- ═══════════════════════════════════════════════════════════════
---  REGISTRO DE MANAGERS (vu103 equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-CFX.Managers = {
-    CurvedKick = CurvedKickManager,
-    GK = GKManager,
-    Ball = BallManager,
-    AutoCatch = AutoCatchManager,
-    ESP = ESPManager,
-}
-
-function CAFUXZ1.RunManagers()
-    for name, manager in pairs(CFX.Managers) do
-        local success, result = pcall(manager.Initialize)
-        if success then
-            print("[CAFUXZ1] Manager carregado: " .. name)
-        else
-            warn("[CAFUXZ1] Falha ao carregar Manager [" .. name .. "]: " .. tostring(result))
-        end
-    end
-end
-
-print("[CAFUXZ1] Parte 2/5 carregada com sucesso!")
-print("[CAFUXZ1] Managers: CurvedKick, GK, Ball, AutoCatch, ESP")
-
-return CAFUXZ1
-
--- ═══════════════════════════════════════════════════════════════
---  CAFUXZ1 HUB v16.0 - PARTE 3/5
---  Screen Stretch | Otimização de Performance | Misc | Teleporte
--- ═══════════════════════════════════════════════════════════════
-
-local CFX = (getgenv and getgenv()) or (getrenv and getrenv()) or getfenv()
-local CAFUXZ1 = CFX.CAFUXZ1
-local Services = CFX.Services
-local LocalPlayer = CFX.LocalPlayer
-local NotifySystem = CFX.NotifySystem
-
--- ═══════════════════════════════════════════════════════════════
---  MANAGER: SCREEN STRETCH SYSTEM (SeaManager/Visual equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-local ScreenStretchManager = {
-    OriginalResolution = nil,
-    OriginalTextures = {},
-    IsOptimized = false,
-}
-
-function ScreenStretchManager.Initialize()
-    -- Salva configurações originais
-    ScreenStretchManager.OriginalResolution = Camera.ViewportSize
-end
-
-function ScreenStretchManager.ApplyStretch(scale)
-    scale = scale or CFX.Settings.Stretch_Resolution or 0.5
-    
-    local cam = Services.Workspace.CurrentCamera
-    local originalSize = cam.ViewportSize
-    
-    -- Reduz resolução de renderização
-    cam.ViewportSize = Vector2.new(
-        math.floor(originalSize.X * scale),
-        math.floor(originalSize.Y * scale)
+local function tween(obj, props, duration, easing, direction)
+    local info = TweenInfo.new(
+        duration or 0.3,
+        easing or Enum.EasingStyle.Quad,
+        direction or Enum.EasingDirection.Out
     )
-    
-    -- Ajusta FOV para compensar
-    cam.FieldOfView = 70 + (1 - scale) * 30
-    
-    NotifySystem.Send("Screen Stretch", "Resolução reduzida para " .. math.floor(scale * 100) .. "%", 3, "Success")
+    local tw = TweenService:Create(obj, info, props)
+    tw:Play()
+    return tw
 end
 
-function ScreenStretchManager.RemoveTextures()
-    if not CFX.Settings.RemoveTextures then return end
-    
-    local removedCount = 0
-    
-    for _, obj in ipairs(Services.Workspace:GetDescendants()) do
-        if obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
-            if obj.TextureID and obj.TextureID ~= "" then
-                ScreenStretchManager.OriginalTextures[obj] = obj.TextureID
-                obj.TextureID = ""
-                removedCount = removedCount + 1
-            end
-            
-            -- Remove decals
-            for _, child in ipairs(obj:GetChildren()) do
-                if child:IsA("Decal") or child:IsA("Texture") then
-                    child:Destroy()
-                    removedCount = removedCount + 1
-                end
-            end
-        end
-        
-        -- Remove SurfaceGuis desnecessários
-        if obj:IsA("SurfaceGui") and not obj:FindFirstAncestorOfClass("Model") then
-            obj:Destroy()
-            removedCount = removedCount + 1
-        end
-    end
-    
-    -- Otimiza Lighting
-    local lighting = Services.Lighting
-    lighting.GlobalShadows = false
-    lighting.Technology = Enum.Technology.Compatibility
-    lighting.Brightness = 1
-    lighting.FogEnd = 500
-    
-    -- Remove efeitos pesados
-    for _, effect in ipairs(lighting:GetChildren()) do
-        if effect:IsA("BlurEffect") or effect:IsA("SunRaysEffect") or 
-           effect:IsA("ColorCorrectionEffect") or effect:IsA("BloomEffect") then
-            effect:Destroy()
-            removedCount = removedCount + 1
-        end
-    end
-    
-    NotifySystem.Send("Otimização", tostring(removedCount) .. " texturas/efeitos removidos!", 3, "Success")
-end
+-- ═══════════════════════════════════════════════════
+--  SISTEMA DE NOTIFICAÇÕES (Estilo Junkie)
+-- ═══════════════════════════════════════════════════
 
-function ScreenStretchManager.OptimizeMaterials()
-    if not CFX.Settings.OptimizeMaterials then return end
-    
-    for _, obj in ipairs(Services.Workspace:GetDescendants()) do
-        if obj:IsA("BasePart") or obj:IsA("MeshPart") then
-            -- Converte materiais pesados para plástico
-            if obj.Material == Enum.Material.DiamondPlate or 
-               obj.Material == Enum.Material.Foil or
-               obj.Material == Enum.Material.Glass or
-               obj.Material == Enum.Material.Granite or
-               obj.Material == Enum.Material.Marble or
-               obj.Material == Enum.Material.Pebble then
-                obj.Material = Enum.Material.Plastic
-            end
-            
-            -- Reduz reflectância
-            obj.Reflectance = 0
-        end
-    end
-    
-    NotifySystem.Send("Otimização", "Materiais otimizados para melhor FPS!", 2, "Success")
-end
+local function createNotification(title, content, length, iconId)
+    local screen = Instance.new("ScreenGui")
+    screen.Name = "KavroyxNotif_" .. tostring(math.floor(tick() * 1000))
+    screen.ResetOnSpawn = false
+    screen.DisplayOrder = 2147483647
+    screen.Parent = CoreGui
 
-function ScreenStretchManager.Reset()
-    local cam = Services.Workspace.CurrentCamera
-    if ScreenStretchManager.OriginalResolution then
-        cam.ViewportSize = ScreenStretchManager.OriginalResolution
-    end
-    cam.FieldOfView = 70
-    
-    -- Restaura texturas
-    for obj, texture in pairs(ScreenStretchManager.OriginalTextures) do
-        if obj and obj.Parent then
-            obj.TextureID = texture
-        end
-    end
-    
-    ScreenStretchManager.OriginalTextures = {}
-    NotifySystem.Send("Screen Stretch", "Configurações restauradas!", 2, "Info")
-end
+    local scale = math.clamp(math.min(workspace.CurrentCamera.ViewportSize.X, workspace.CurrentCamera.ViewportSize.Y) / 1366, 0.6, 1.6)
+    local w = math.clamp(320 * scale, 200, 520)
+    local h = math.clamp(72 * scale, 54, 140)
 
--- ═══════════════════════════════════════════════════════════════
---  MANAGER: TELEPORTE & MOVIMENTAÇÃO (PlayerTeleport equivalente)
--- ═══════════════════════════════════════════════════════════════
+    local main = Instance.new("Frame")
+    main.Size = UDim2.new(0, w, 0, h)
+    main.Position = UDim2.new(1, -12, 1, -12 - h - 16)
+    main.AnchorPoint = Vector2.new(1, 1)
+    main.BackgroundColor3 = Color3.fromRGB(20, 40, 70)
+    main.BorderSizePixel = 0
+    main.Parent = screen
 
-local TeleportManager = {
-    LastTP = 0,
-    TPCooldown = 1,
-    SavedPositions = {},
-}
-
-function TeleportManager.Initialize()
-    -- Sistema de teleporte seguro
-end
-
-function TeleportManager.TeleportTo(position)
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return end
-    
-    if tick() - TeleportManager.LastTP < TeleportManager.TPCooldown then
-        return
-    end
-    
-    TeleportManager.LastTP = tick()
-    
-    -- Usa Tween para teleporte suave
-    local distance = (rootPart.Position - position).Magnitude
-    local speed = CFX.Settings.TweenSpeed or 220
-    local time = distance / speed
-    
-    if distance < 150 then
-        rootPart.CFrame = CFrame.new(position)
-    else
-        CFX.TweenSystem.new(rootPart, math.min(time, 3), "CFrame", CFrame.new(position))
-    end
-end
-
-function TeleportManager.TeleportToBall()
-    for _, obj in ipairs(Services.Workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and obj.Shape == Enum.PartType.Ball then
-            TeleportManager.TeleportTo(obj.Position + Vector3.new(0, 5, 0))
-            return
-        end
-    end
-    NotifySystem.Send("Teleporte", "Nenhuma bola encontrada!", 2, "Error")
-end
-
-function TeleportManager.TeleportToGoal()
-    -- Detecta gols automaticamente (partes com nomes típicos)
-    for _, obj in ipairs(Services.Workspace:GetDescendants()) do
-        local name = string.lower(obj.Name)
-        if name:find("goal") or name:find("gol") or name:find("net") then
-            TeleportManager.TeleportTo(obj.Position + Vector3.new(0, 5, 0))
-            return
-        end
-    end
-    NotifySystem.Send("Teleporte", "Nenhum gol encontrado!", 2, "Error")
-end
-
-function TeleportManager.SavePosition(name)
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return end
-    
-    TeleportManager.SavedPositions[name] = rootPart.CFrame
-    NotifySystem.Send("Posição Salva", "Local '" .. name .. "' salvo!", 2, "Success")
-end
-
-function TeleportManager.LoadPosition(name)
-    local pos = TeleportManager.SavedPositions[name]
-    if pos then
-        TeleportManager.TeleportTo(pos.Position)
-    else
-        NotifySystem.Send("Erro", "Posição '" .. name .. "' não encontrada!", 2, "Error")
-    end
-end
-
--- ═══════════════════════════════════════════════════════════════
---  MANAGER: ANTI-AFK & UTILITÁRIOS (Misc equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-local MiscManager = {
-    AntiAFK_Connection = nil,
-}
-
-function MiscManager.Initialize()
-    -- Anti-AFK
-    MiscManager.SetupAntiAFK()
-end
-
-function MiscManager.SetupAntiAFK()
-    local vu = Services.VirtualUser
-    
-    CFX.Connections.AntiAFK = LocalPlayer.Idled:Connect(function()
-        vu:Button2Down(Vector2.new(0, 0), Services.Workspace.CurrentCamera.CFrame)
-        task.wait(1)
-        vu:Button2Up(Vector2.new(0, 0), Services.Workspace.CurrentCamera.CFrame)
-    end)
-    
-    table.insert(CFX.Connections, CFX.Connections.AntiAFK)
-end
-
-function MiscManager.FullBright()
-    local lighting = Services.Lighting
-    lighting.Brightness = 2
-    lighting.ClockTime = 14
-    lighting.FogEnd = 100000
-    lighting.GlobalShadows = false
-    lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
-    
-    NotifySystem.Send("Visual", "FullBright ativado!", 2, "Success")
-end
-
-function MiscManager.RejoinServer()
-    local placeId = game.PlaceId
-    local jobId = game.JobId
-    Services.TeleportService:TeleportToPlaceInstance(placeId, jobId, LocalPlayer)
-end
-
-function MiscManager.ServerHop()
-    local placeId = game.PlaceId
-    local servers = {}
-    
-    local success, result = pcall(function()
-        local req = game:HttpGet("https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100")
-        local data = Services.HttpService:JSONDecode(req)
-        return data
-    end)
-    
-    if success and result and result.data then
-        for _, server in ipairs(result.data) do
-            if server.id ~= game.JobId and server.playing < server.maxPlayers then
-                table.insert(servers, server.id)
-            end
-        end
-        
-        if #servers > 0 then
-            local randomServer = servers[math.random(1, #servers)]
-            Services.TeleportService:TeleportToPlaceInstance(placeId, randomServer, LocalPlayer)
-        end
-    end
-end
-
--- ═══════════════════════════════════════════════════════════════
---  REGISTRO DE MANAGERS ADICIONAIS
--- ═══════════════════════════════════════════════════════════════
-
-CFX.Managers.ScreenStretch = ScreenStretchManager
-CFX.Managers.Teleport = TeleportManager
-CFX.Managers.Misc = MiscManager
-
-print("[CAFUXZ1] Parte 3/5 carregada com sucesso!")
-print("[CAFUXZ1] Managers: ScreenStretch, Teleport, Misc")
-
-return CAFUXZ1
-
--- ═══════════════════════════════════════════════════════════════
---  CAFUXZ1 HUB v16.0 - PARTE 4/5
---  Interface WindUI - Todas as Tabs | Design Premium
--- ═══════════════════════════════════════════════════════════════
-
-local CFX = (getgenv and getgenv()) or (getrenv and getrenv()) or getfenv()
-local CAFUXZ1 = CFX.CAFUXZ1
-local WindUI = CFX.WindUI
-local Services = CFX.Services
-local LocalPlayer = CFX.LocalPlayer
-local NotifySystem = CFX.NotifySystem
-
--- ═══════════════════════════════════════════════════════════════
---  SISTEMA DE TABS (LoadTabs equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-function CAFUXZ1.LoadTabs(window)
-    return {
-        Discord = window:MakeTab({
-            Title = "Discord",
-            Icon = "Info"
-        }),
-        Main = window:MakeTab({
-            Title = "Principal",
-            Icon = "Home"
-        }),
-        GK = window:MakeTab({
-            Title = "GK Reach",
-            Icon = "Shield"
-        }),
-        Ball = window:MakeTab({
-            Title = "Bola",
-            Icon = "Circle"
-        }),
-        Kicks = window:MakeTab({
-            Title = "Chutes",
-            Icon = "Zap"
-        }),
-        Visual = window:MakeTab({
-            Title = "Visual",
-            Icon = "Eye"
-        }),
-        Stretch = window:MakeTab({
-            Title = "Tela",
-            Icon = "Monitor"
-        }),
-        Teleport = window:MakeTab({
-            Title = "Teleporte",
-            Icon = "Locate"
-        }),
-        Misc = window:MakeTab({
-            Title = "Extras",
-            Icon = "Settings"
-        }),
-    }
-end
-
--- ═══════════════════════════════════════════════════════════════
---  PLUGIN SYSTEM (InstallPlugin equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-function CAFUXZ1.InstallPlugin()
-    return {
-        Toggle = function(tab, config, optionKey)
-            local name = config[1]
-            local desc = config[2] or ""
-            local default = config[3] or false
-            
-            return tab:AddToggle({
-                Title = name,
-                Description = desc,
-                Default = CFX.Settings[optionKey] or default,
-                Callback = function(value)
-                    CFX.Enabled[optionKey] = value
-                    CFX.Settings[optionKey] = value
-                end
-            })
-        end,
-        
-        Slider = function(tab, config)
-            return tab:AddSlider({
-                Title = config[1],
-                Min = config[2],
-                Max = config[3],
-                Increment = config[4],
-                Default = config[5],
-                Callback = config[6]
-            })
-        end,
-        
-        Dropdown = function(tab, config)
-            return tab:AddDropdown({
-                Title = config[1],
-                Options = config[2],
-                Default = config[3],
-                Callback = config[4]
-            })
-        end,
-    }
-end
-
--- ═══════════════════════════════════════════════════════════════
---  CONSTRUÇÃO DA INTERFACE (LoadLibrary equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-function CAFUXZ1.BuildUI()
-    -- Cria a janela principal
-    local Window = WindUI:CreateWindow({
-        Title = "CAFUXZ1 HUB",
-        SubTitle = "v16.0 | by CAFUXZ1",
-        Icon = "rbxassetid://15298567397",
-        Size = UDim2.fromOffset(580, 420),
-        Position = UDim2.fromScale(0.5, 0.5),
-        Theme = CFX.Settings.Theme or "Dark",
-        Background = "rbxassetid://13511292247",
-        User = {
-            Title = LocalPlayer.DisplayName or LocalPlayer.Name,
-            Icon = "rbxassetid://18854959415"
-        },
-        KeySystem = false,
-    })
-    
-    CFX.Window = Window
-    
-    -- Botão de minimizar
-    Window:AddMinimizeButton({
-        Button = {
-            Image = "rbxassetid://15298567397",
-            BackgroundTransparency = 0,
-            Corner = {
-                CornerRadius = UDim.new(0, 6)
-            }
-        }
-    })
-    
-    -- Carrega todas as tabs
-    local Tabs = CAFUXZ1.LoadTabs(Window)
-    local Plugin = CAFUXZ1.InstallPlugin()
-    local Toggle = Plugin.Toggle
-    
-    -- ═══════════════════════════════════════════════════════════
-    --  TAB: DISCORD
-    -- ═══════════════════════════════════════════════════════════
-    
-    Tabs.Discord:AddDiscordInvite({
-        Name = "CAFUXZ1 | Community",
-        Description = "Entre no nosso Discord para novidades e suporte!",
-        Logo = "rbxassetid://18854959415",
-        Invite = "https://discord.gg/cafuxz1"
-    })
-    
-    Tabs.Discord:AddSection("Informações")
-    Tabs.Discord:AddParagraph({
-        Title = "CAFUXZ1 Hub v16.0",
-        Content = "Hub completo para futebol no Roblox.\nDesenvolvido com base na arquitetura RedzLibV5."
-    })
-    
-    Tabs.Discord:AddParagraph({
-        Title = "Créditos",
-        Content = "Base: Redz Hub (real_redz)\nAdaptação: CAFUXZ1\nWindUI Library"
-    })
-    
-    -- ═══════════════════════════════════════════════════════════
-    --  TAB: PRINCIPAL (Main)
-    -- ═══════════════════════════════════════════════════════════
-    
-    Tabs.Main:AddSection("Configurações Gerais")
-    
-    -- UI Scale
-    local scaleOptions = {
-        Small = 760,
-        Medium = 620,
-        Large = 450,
-        Bigger = 380
-    }
-    
-    Tabs.Main:AddDropdown({
-        Title = "Escala da UI",
-        Options = {"Small", "Medium", "Large", "Bigger"},
-        Default = CFX.Settings.UIScale or "Large",
-        Callback = function(value)
-            CFX.Settings.UIScale = value
-            pcall(function()
-                WindUI:SetScale(scaleOptions[value] or 450)
-            end)
-        end
-    })
-    
-    Tabs.Main:AddSection("Auto Farm")
-    
-    Toggle(Tabs.Main, {"Auto Farm Level", "Farm automático de nível", false}, "AutoFarm")
-    Toggle(Tabs.Main, {"Auto Farm Nearest", "Farm no inimigo mais próximo", false}, "FarmNearest")
-    
-    -- ═══════════════════════════════════════════════════════════
-    --  TAB: GK REACH
-    -- ═══════════════════════════════════════════════════════════
-    
-    Tabs.GK:AddSection("GK Reach System")
-    
-    Toggle(Tabs.GK, {"Ativar GK Reach", "Cubo transparente atrás do jogador", false}, "GK_Enabled")
-    
-    Tabs.GK:AddDropdown({
-        Title = "Posição do GK",
-        Options = {"Behind", "Front", "Center"},
-        Default = "Behind",
-        Callback = function(value)
-            CFX.Settings.GK_Position = value
-        end
-    })
-    
-    Tabs.GK:AddSlider({
-        Title = "Largura do Cubo",
-        Min = 2,
-        Max = 15,
-        Increment = 0.5,
-        Default = 6,
-        Callback = function(value)
-            CFX.Settings.GK_Size = Vector3.new(value, CFX.Settings.GK_Size.Y, CFX.Settings.GK_Size.Z)
-        end
-    })
-    
-    Tabs.GK:AddSlider({
-        Title = "Altura do Cubo",
-        Min = 5,
-        Max = 25,
-        Increment = 0.5,
-        Default = 12,
-        Callback = function(value)
-            CFX.Settings.GK_Size = Vector3.new(CFX.Settings.GK_Size.X, value, CFX.Settings.GK_Size.Z)
-        end
-    })
-    
-    Tabs.GK:AddSlider({
-        Title = "Profundidade do Cubo",
-        Min = 2,
-        Max = 15,
-        Increment = 0.5,
-        Default = 6,
-        Callback = function(value)
-            CFX.Settings.GK_Size = Vector3.new(CFX.Settings.GK_Size.X, CFX.Settings.GK_Size.Y, value)
-        end
-    })
-    
-    Toggle(Tabs.GK, {"Apenas Bordas", "Mostrar apenas as bordas do cubo", true}, "GK_BorderOnly")
-    
-    -- ═══════════════════════════════════════════════════════════
-    --  TAB: BOLA
-    -- ═══════════════════════════════════════════════════════════
-    
-    Tabs.Ball:AddSection("Cor da Bola")
-    
-    Tabs.Ball:AddColorpicker({
-        Title = "Cor Personalizada",
-        Default = CFX.Settings.Ball_Color or Color3.fromRGB(255, 255, 255),
-        Callback = function(color)
-            CFX.Managers.Ball.SetBallColor(color)
-        end
-    })
-    
-    Toggle(Tabs.Ball, {"Glow na Bola", "Efeito de luz na bola", false}, "Ball_Glow")
-    Toggle(Tabs.Ball, {"Rastro na Bola", "Trail atrás da bola", false}, "Ball_Trail")
-    
-    Tabs.Ball:AddSection("Sistema de Neve")
-    
-    Tabs.Ball:AddButton({
-        Title = "Ativar Neve",
-        Callback = function()
-            CFX.Managers.Ball.ToggleSnow(true)
-        end
-    })
-    
-    Tabs.Ball:AddButton({
-        Title = "Desativar Neve",
-        Callback = function()
-            CFX.Managers.Ball.ToggleSnow(false)
-        end
-    })
-    
-    -- ═══════════════════════════════════════════════════════════
-    --  TAB: CHUTES
-    -- ═══════════════════════════════════════════════════════════
-    
-    Tabs.Kicks:AddSection("Curved Kick System")
-    
-    Toggle(Tabs.Kicks, {"Chutes Curvos", "Aplica efeito de curva em todos os chutes", true}, "CurvedKick")
-    
-    Tabs.Kicks:AddSlider({
-        Title = "Intensidade da Curva",
-        Min = 0.5,
-        Max = 5,
-        Increment = 0.1,
-        Default = 1.5,
-        Callback = function(value)
-            CFX.Settings.CurveIntensity = value
-        end
-    })
-    
-    Tabs.Kicks:AddSlider({
-        Title = "Aleatoriedade",
-        Min = 0,
-        Max = 1,
-        Increment = 0.05,
-        Default = 0.3,
-        Callback = function(value)
-            CFX.Settings.CurveRandomness = value
-        end
-    })
-    
-    Tabs.Kicks:AddSection("Auto Catch")
-    
-    Toggle(Tabs.Kicks, {"Auto Catch", "Pega a bola automaticamente", false}, "AutoCatch")
-    
-    Tabs.Kicks:AddSlider({
-        Title = "Alcance do Catch",
-        Min = 5,
-        Max = 50,
-        Increment = 1,
-        Default = 15,
-        Callback = function(value)
-            CFX.Settings.CatchRange = value
-        end
-    })
-    
-    -- ═══════════════════════════════════════════════════════════
-    --  TAB: VISUAL
-    -- ═══════════════════════════════════════════════════════════
-    
-    Tabs.Visual:AddSection("ESP System")
-    
-    Toggle(Tabs.Visual, {"ESP Geral", "Ativar ESP", false}, "ESP_Enabled")
-    Toggle(Tabs.Visual, {"ESP Bola", "Destacar bolas no mapa", true}, "ESP_Ball")
-    Toggle(Tabs.Visual, {"ESP Jogadores", "Destacar jogadores", false}, "ESP_Players")
-    Toggle(Tabs.Visual, {"ESP GK", "Mostrar alcance do GK", true}, "ESP_GK")
-    
-    Tabs.Visual:AddButton({
-        Title = "FullBright",
-        Callback = function()
-            CFX.Managers.Misc.FullBright()
-        end
-    })
-    
-    Tabs.Visual:AddButton({
-        Title = "Remover Fog",
-        Callback = function()
-            if Services.Lighting:FindFirstChild("LightingLayers") then
-                Services.Lighting.LightingLayers:Destroy()
-            end
-            NotifySystem.Send("Visual", "Fog removido!", 2, "Success")
-        end
-    })
-    
-    -- ═══════════════════════════════════════════════════════════
-    --  TAB: TELA (Screen Stretch)
-    -- ═══════════════════════════════════════════════════════════
-    
-    Tabs.Stretch:AddSection("Otimização de Tela")
-    
-    Toggle(Tabs.Stretch, {"Screen Stretch", "Reduzir resolução para mais FPS", false}, "Stretch_Enabled")
-    
-    Tabs.Stretch:AddSlider({
-        Title = "Escala de Resolução",
-        Min = 0.1,
-        Max = 1,
-        Increment = 0.05,
-        Default = 0.5,
-        Callback = function(value)
-            CFX.Settings.Stretch_Resolution = value
-            if CFX.Settings.Stretch_Enabled then
-                CFX.Managers.ScreenStretch.ApplyStretch(value)
-            end
-        end
-    })
-    
-    Toggle(Tabs.Stretch, {"Remover Texturas", "Remove texturas para FPS boost", true}, "RemoveTextures")
-    Toggle(Tabs.Stretch, {"Otimizar Materiais", "Converte materiais pesados", true}, "OptimizeMaterials")
-    
-    Tabs.Stretch:AddButton({
-        Title = "Aplicar Otimização",
-        Callback = function()
-            CFX.Managers.ScreenStretch.RemoveTextures()
-            CFX.Managers.ScreenStretch.OptimizeMaterials()
-        end
-    })
-    
-    Tabs.Stretch:AddButton({
-        Title = "Resetar Tela",
-        Callback = function()
-            CFX.Managers.ScreenStretch.Reset()
-        end
-    })
-    
-    -- ═══════════════════════════════════════════════════════════
-    --  TAB: TELEPORTE
-    -- ═══════════════════════════════════════════════════════════
-    
-    Tabs.Teleport:AddSection("Teleporte Rápido")
-    
-    Tabs.Teleport:AddButton({
-        Title = "Teleportar para Bola",
-        Callback = function()
-            CFX.Managers.Teleport.TeleportToBall()
-        end
-    })
-    
-    Tabs.Teleport:AddButton({
-        Title = "Teleportar para Gol",
-        Callback = function()
-            CFX.Managers.Teleport.TeleportToGoal()
-        end
-    })
-    
-    Tabs.Teleport:AddSection("Posições Salvas")
-    
-    local posName = ""
-    Tabs.Teleport:AddInput({
-        Title = "Nome da Posição",
-        Default = "",
-        Placeholder = "Ex: Gol Norte",
-        Callback = function(text)
-            posName = text
-        end
-    })
-    
-    Tabs.Teleport:AddButton({
-        Title = "Salvar Posição",
-        Callback = function()
-            if posName ~= "" then
-                CFX.Managers.Teleport.SavePosition(posName)
-            end
-        end
-    })
-    
-    Tabs.Teleport:AddButton({
-        Title = "Carregar Posição",
-        Callback = function()
-            if posName ~= "" then
-                CFX.Managers.Teleport.LoadPosition(posName)
-            end
-        end
-    })
-    
-    -- ═══════════════════════════════════════════════════════════
-    --  TAB: EXTRAS (Misc)
-    -- ═══════════════════════════════════════════════════════════
-    
-    Tabs.Misc:AddSection("Anti-AFK")
-    
-    Toggle(Tabs.Misc, {"Anti-AFK", "Evita ser kickado por inatividade", true}, "AntiAFK")
-    
-    Tabs.Misc:AddSection("Servidor")
-    
-    Tabs.Misc:AddButton({
-        Title = "Rejoin Server",
-        Callback = function()
-            CFX.Managers.Misc.RejoinServer()
-        end
-    })
-    
-    Tabs.Misc:AddButton({
-        Title = "Server Hop",
-        Callback = function()
-            CFX.Managers.Misc.ServerHop()
-        end
-    })
-    
-    Tabs.Misc:AddSection("Hub")
-    
-    Tabs.Misc:AddButton({
-        Title = "Destruir Hub",
-        Callback = function()
-            Window:Destroy()
-            ClearConnections()
-        end
-    })
-    
-    -- Seleciona tab principal
-    Window:SelectTab(Tabs.Main)
-    
-    NotifySystem.Send("CAFUXZ1 Hub", "Interface carregada com sucesso!", 3, "Success")
-end
-
-print("[CAFUXZ1] Parte 4/5 carregada com sucesso!")
-print("[CAFUXZ1] Interface WindUI construída!")
-
-return CAFUXZ1
--- ═══════════════════════════════════════════════════════════════
---  CAFUXZ1 HUB v16.0 - PARTE 5/5
---  Inicialização | Farm Queue | Start Functions | Finalização
--- ═══════════════════════════════════════════════════════════════
-
-local CFX = (getgenv and getgenv()) or (getrenv and getrenv()) or getfenv()
-local CAFUXZ1 = CFX.CAFUXZ1
-local Services = CFX.Services
-local LocalPlayer = CFX.LocalPlayer
-local NotifySystem = CFX.NotifySystem
-
--- ═══════════════════════════════════════════════════════════════
---  SISTEMA DE FUNÇÕES DE FARM (StartFunctions equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-local FarmFunctions = {}
-local AllFunctions = {}
-
-function CAFUXZ1.RegisterFunction(name, func, condition)
-    condition = condition ~= false
-    
-    if not AllFunctions[name] then
-        AllFunctions[name] = func
-        table.insert(CFX.Functions, {
-            Name = name,
-            Function = func
-        })
-    else
-        AllFunctions[name] = func
-        for _, f in ipairs(CFX.Functions) do
-            if f.Name == name then
-                f.Function = func
-            end
-        end
-    end
-end
-
-function CAFUXZ1.StartFunctions()
-    table.clear(CFX.Functions)
-    
-    local GK = CFX.Managers.GK
-    local Ball = CFX.Managers.Ball
-    local CurvedKick = CFX.Managers.CurvedKick
-    local AutoCatch = CFX.Managers.AutoCatch
-    local ESP = CFX.Managers.ESP
-    local ScreenStretch = CFX.Managers.ScreenStretch
-    local Teleport = CFX.Managers.Teleport
-    local Misc = CFX.Managers.Misc
-    
-    -- ═══════════════════════════════════════════════════════════
-    --  REGISTRO DE FUNÇÕES DE FARM
-    -- ═══════════════════════════════════════════════════════════
-    
-    -- Auto Farm Level (placeholder para jogo de futebol)
-    CAFUXZ1.RegisterFunction("Level", function()
-        -- Lógica de farm de nível específica do jogo
-        task.wait(0.5)
-        return "Farming Level..."
-    end)
-    
-    -- Farm Nearest (chuta bola mais próxima)
-    CAFUXZ1.RegisterFunction("Nearest", function()
-        local character = LocalPlayer.Character
-        if not character then return end
-        
-        local rootPart = character:FindFirstChild("HumanoidRootPart")
-        if not rootPart then return end
-        
-        local nearestBall = nil
-        local nearestDist = math.huge
-        
-        for _, obj in ipairs(Services.Workspace:GetDescendants()) do
-            if obj:IsA("BasePart") and obj.Shape == Enum.PartType.Ball then
-                local dist = (obj.Position - rootPart.Position).Magnitude
-                if dist < nearestDist then
-                    nearestBall = obj
-                    nearestDist = dist
-                end
-            end
-        end
-        
-        if nearestBall and nearestDist < 1500 then
-            -- Teleporta e chuta
-            Teleport.TeleportTo(nearestBall.Position + Vector3.new(0, 5, 0))
-            task.wait(0.3)
-            CurvedKick.ApplyCurve(nearestBall, character)
-            return "Chutando bola mais próxima..."
-        end
-        
-        task.wait(0.4)
-    end)
-    
-    -- Curved Kick automático
-    CAFUXZ1.RegisterFunction("CurvedKick", function()
-        if not CFX.Settings.CurvedKick then return end
-        -- O CurvedKickManager já roda via Heartbeat
-        task.wait(0.1)
-        return "Curved Kick ativo"
-    end)
-    
-    -- Auto Catch
-    CAFUXZ1.RegisterFunction("AutoCatch", function()
-        if not CFX.Settings.AutoCatch then return end
-        AutoCatch.TryCatch()
-        task.wait(0.1)
-        return "Auto Catch ativo"
-    end)
-    
-    -- GK Atualização
-    CAFUXZ1.RegisterFunction("GK", function()
-        -- O GKManager já roda via RenderStepped
-        task.wait(0.1)
-        return "GK ativo"
-    end)
-    
-    -- ESP Atualização
-    CAFUXZ1.RegisterFunction("ESP", function()
-        -- O ESPManager já roda via RenderStepped
-        task.wait(0.1)
-        return "ESP ativo"
-    end)
-    
-    -- Screen Stretch
-    CAFUXZ1.RegisterFunction("Stretch", function()
-        if CFX.Settings.Stretch_Enabled then
-            ScreenStretch.ApplyStretch()
-        end
-        task.wait(1)
-        return "Screen Stretch ativo"
-    end)
-end
-
--- ═══════════════════════════════════════════════════════════════
---  START FARM (StartFarm equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-function CAFUXZ1.StartFarm()
-    if not CFX.CFX_loadedFarm then
-        CFX.CFX_loadedFarm = true
-        CFX.CFX_OnFarm = true
-        
-        -- Inicia a fila de farm em spawn separado
-        task.spawn(function()
-            while CFX.CFX_OnFarm do
-                for _, funcData in ipairs(CFX.KickFunctions) do
-                    if CFX.Enabled[funcData.Name] then
-                        local status, result = pcall(funcData.Function)
-                        if not status then
-                            warn("[CAFUXZ1] Farm error in " .. funcData.Name .. ": " .. tostring(result))
-                        end
-                    end
-                end
-                task.wait()
-            end
-        end)
-        
-        NotifySystem.Send("Farm", "Sistema de farm iniciado!", 2, "Success")
-    end
-end
-
--- ═══════════════════════════════════════════════════════════════
---  INICIALIZAÇÃO COMPLETA (Initialize equivalente)
--- ═══════════════════════════════════════════════════════════════
-
-function CAFUXZ1.Initialize()
-    -- Limpa erros anteriores
-    if CFX.CFX_ErrorMsg then
-        pcall(function() CFX.CFX_ErrorMsg:Destroy() end)
-    end
-    
-    -- Inicializa library
-    CAFUXZ1.InitializeLibrary()
-    
-    -- Carrega managers
-    CAFUXZ1.RunManagers()
-    
-    -- Registra funções
-    CAFUXZ1.StartFunctions()
-    
-    -- Constrói UI
-    CAFUXZ1.BuildUI()
-    
-    -- Inicia farm
-    CAFUXZ1.StartFarm()
-    
-    print("[CAFUXZ1] Hub inicializado com sucesso!")
-    print("[CAFUXZ1] Versão 16.0 | Todos os sistemas ativos")
-end
-
--- ═══════════════════════════════════════════════════════════════
---  SISTEMA DE MINIMIZAR (Floating Icon)
--- ═══════════════════════════════════════════════════════════════
-
-function CAFUXZ1.CreateMinimizeButton()
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "CAFUXZ1_Minimize"
-    screenGui.ResetOnSpawn = false
-    screenGui.Parent = Services.CoreGui
-    
-    local button = Instance.new("ImageButton")
-    button.Name = "MinimizeButton"
-    button.Size = UDim2.new(0, 45, 0, 45)
-    button.Position = UDim2.new(0, 20, 0.5, -22)
-    button.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-    button.Image = "rbxassetid://15298567397"
-    button.ImageColor3 = Color3.fromRGB(255, 255, 255)
-    button.Parent = screenGui
-    
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 10)
-    corner.Parent = button
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(0, 150, 255)
-    stroke.Thickness = 2
-    stroke.Parent = button
-    
-    local isMinimized = false
-    
-    button.MouseButton1Click:Connect(function()
-        if CFX.Window then
-            isMinimized = not isMinimized
-            if isMinimized then
-                CFX.Window:Minimize()
-                button.ImageColor3 = Color3.fromRGB(0, 255, 100)
-            else
-                CFX.Window:Restore()
-                button.ImageColor3 = Color3.fromRGB(255, 255, 255)
+    corner.Parent = main
+
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(1, 0, 0, 4)
+    bar.Position = UDim2.new(0, 0, 1, -4)
+    bar.BackgroundColor3 = STYLE.accentColor
+    bar.BorderSizePixel = 0
+    bar.ClipsDescendants = true
+    bar.Parent = main
+
+    local barCorner = Instance.new("UICorner")
+    barCorner.CornerRadius = UDim.new(0, 2)
+    barCorner.Parent = bar
+
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(1, 0, 1, 0)
+    fill.Position = UDim2.new(0, 0, 0, 0)
+    fill.BackgroundColor3 = STYLE.accentColor
+    fill.BorderSizePixel = 0
+    fill.Parent = bar
+
+    local icon = Instance.new("ImageLabel")
+    icon.Size = UDim2.new(0, h, 1, 0)
+    icon.Position = UDim2.new(0, 0, 0, 0)
+    icon.BackgroundTransparency = 1
+    icon.Image = iconId or STYLE.logoId
+    icon.ImageColor3 = STYLE.accentColor
+    icon.ScaleType = Enum.ScaleType.Stretch
+    icon.Parent = main
+
+    local txt = Instance.new("TextLabel")
+    txt.BackgroundTransparency = 1
+    txt.Size = UDim2.new(1, -h - 8, 0.4, 0)
+    txt.Position = UDim2.new(0, h + 8, 0, 0)
+    txt.Font = STYLE.codeFont
+    txt.TextSize = math.clamp(14 * scale, 12, 20)
+    txt.TextXAlignment = Enum.TextXAlignment.Left
+    txt.TextYAlignment = Enum.TextYAlignment.Top
+    txt.TextColor3 = Color3.new(1, 1, 1)
+    txt.Text = title
+    txt.Parent = main
+
+    local sub = Instance.new("TextLabel")
+    sub.BackgroundTransparency = 1
+    sub.Size = UDim2.new(1, -h - 8, 0.5, 0)
+    sub.Position = UDim2.new(0, h + 8, 0.4, 0)
+    sub.Font = STYLE.codeFont
+    sub.TextSize = math.clamp(12 * scale, 10, 16)
+    sub.TextXAlignment = Enum.TextXAlignment.Left
+    sub.TextYAlignment = Enum.TextYAlignment.Top
+    sub.TextColor3 = Color3.fromRGB(200, 200, 200)
+    sub.Text = content
+    sub.TextWrapped = true
+    sub.Parent = main
+
+    local id = tostring(math.floor(tick() * 1000)) .. "-" .. HttpService:GenerateGUID(false)
+    table.insert(State.notifActive, {id = id, frame = main, sizeY = h})
+
+    local function restack()
+        local spacing = 8 * scale
+        local yoff = 0
+        for i = #State.notifActive, 1, -1 do
+            local node = State.notifActive[i]
+            if node and node.frame and node.frame.Parent then
+                local target = -12 - yoff - node.sizeY
+                TweenService:Create(node.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    Position = UDim2.new(1, -12, 1, target)
+                }):Play()
+                yoff = yoff + node.sizeY + spacing
             end
         end
-    end)
-    
-    -- Efeito hover
-    button.MouseEnter:Connect(function()
-        CFX.TweenSystem.new(button, 0.2, "Size", UDim2.new(0, 50, 0, 50))
-    end)
-    
-    button.MouseLeave:Connect(function()
-        CFX.TweenSystem.new(button, 0.2, "Size", UDim2.new(0, 45, 0, 45))
-    end)
-    
-    CFX.MinimizeButton = button
+    end
+
+    restack()
+
+    local function destroy()
+        for i = 1, #State.notifActive do
+            if State.notifActive[i].id == id then
+                table.remove(State.notifActive, i)
+                break
+            end
+        end
+        TweenService:Create(main, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Position = UDim2.new(1, 16, main.Position.Y.Scale, main.Position.Y.Offset),
+            BackgroundTransparency = 1
+        }):Play()
+        TweenService:Create(txt, TweenInfo.new(0.35), {TextTransparency = 1}):Play()
+        TweenService:Create(sub, TweenInfo.new(0.35), {TextTransparency = 1}):Play()
+        TweenService:Create(icon, TweenInfo.new(0.35), {ImageTransparency = 1}):Play()
+        task.wait(0.35)
+        pcall(function() main:Destroy() end)
+        pcall(function() screen:Destroy() end)
+        restack()
+    end
+
+    if length and length > 0 then
+        TweenService:Create(fill, TweenInfo.new(length, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, 0, 1, 0)
+        }):Play()
+        task.delay(length, destroy)
+    end
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.ZIndex = 10
+    btn.Parent = main
+    btn.MouseButton1Click:Connect(destroy)
+
+    return {Close = destroy}
 end
 
--- ═══════════════════════════════════════════════════════════════
---  EXECUÇÃO FINAL
--- ═══════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════
+--  SCAN DE BOLAS
+-- ═══════════════════════════════════════════════════
 
-local function ExecuteWithTiming(name, ...)
-    local startTime = tick()
-    CAFUXZ1[name](CAFUXZ1, ...)
-    print(string.format("[CAFUXZ1] %s executado em %.3fs", name, tick() - startTime))
+local function refreshBalls(force)
+    if not force and (tick() - State.lastRefresh) < CONFIG.scanCooldown then
+        return
+    end
+    State.lastRefresh = tick()
+    table.clear(State.balls)
+
+    local descendants = Workspace:GetDescendants()
+    for i = 1, #descendants do
+        local obj = descendants[i]
+        if obj:IsA("BasePart") and BALL_NAME_SET[obj.Name] then
+            table.insert(State.balls, obj)
+        end
+    end
 end
 
--- Limpa conexões antigas
-for _, conn in ipairs(CFX.Connections or {}) do
-    pcall(function() conn:Disconnect() end)
+-- ═══════════════════════════════════════════════════
+--  PARTES DO CORPO
+-- ═══════════════════════════════════════════════════
+
+local function getValidParts(character)
+    local parts = {}
+    if not character then return parts end
+
+    local children = character:GetChildren()
+    for i = 1, #children do
+        local child = children[i]
+        if child:IsA("BasePart") and child.Name ~= "HumanoidRootPart" then
+            table.insert(parts, child)
+        end
+    end
+    return parts
 end
-table.clear(CFX.Connections or {})
 
--- Executa na ordem correta
-ExecuteWithTiming("Initialize")
-task.spawn(ExecuteWithTiming, "CreateMinimizeButton")
+-- ═══════════════════════════════════════════════════
+--  REACH SPHERE
+-- ═══════════════════════════════════════════════════
 
--- Mensagem final
-print("╔══════════════════════════════════════════════════════════════╗")
-print("║                    CAFUXZ1 HUB v16.0                         ║")
-print("║              Baseado na arquitetura RedzLibV5               ║")
-print("║                                                              ║")
-print("║  ✓ Curved Kick System                                        ║")
-print("║  ✓ GK Reach (Transparente com Bordas)                       ║")
-print("║  ✓ Ball Color Changer + Snow System                         ║")
-print("║  ✓ Auto Catch                                               ║")
-print("║  ✓ ESP System                                               ║")
-print("║  ✓ Screen Stretch / Otimização                              ║")
-print("║  ✓ Teleporte Rápido                                         ║")
-print("║  ✓ Anti-AFK + Server Hop                                   ║")
-print("║                                                              ║")
-print("║  Pressione RightShift para minimizar/restaurar              ║")
-print("╚══════════════════════════════════════════════════════════════╝")
+local function destroyReachSphere()
+    if State.reachSphere and State.reachSphere.Parent then
+        pcall(function()
+            State.reachSphere:Destroy()
+        end)
+    end
+    State.reachSphere = nil
+end
 
-NotifySystem.Send("CAFUXZ1 Hub v16.0", "Todos os sistemas carregados!", 5, "Success")
+local function createReachSphere()
+    destroyReachSphere()
 
--- Retorna o Hub
-return CAFUXZ1
+    if not CONFIG.showReachSphere then
+        return
+    end
+
+    local sphere = Instance.new("Part")
+    sphere.Name = "KavroyxReachSphere"
+    sphere.Shape = Enum.PartType.Ball
+    sphere.Anchored = true
+    sphere.CanCollide = false
+    sphere.CanQuery = false
+    sphere.CanTouch = false
+    sphere.Transparency = CONFIG.sphereTransparency
+    sphere.Material = Enum.Material.ForceField
+    sphere.Color = CONFIG.sphereColor
+    sphere.CastShadow = false
+    sphere.Parent = Workspace
+
+    State.reachSphere = sphere
+
+    local conn = RunService.RenderStepped:Connect(function()
+        if not State.reachSphere or not State.reachSphere.Parent then
+            return
+        end
+        local char = player.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            State.reachSphere.Position = hrp.Position
+        end
+    end)
+    table.insert(State.connections, conn)
+end
+
+local function updateReachSphereSize()
+    if State.reachSphere and State.reachSphere.Parent then
+        local size = CONFIG.reach * 2
+        State.reachSphere.Size = Vector3.new(size, size, size)
+    end
+end
+
+local function updateReachSphere()
+    if not CONFIG.showReachSphere then
+        destroyReachSphere()
+        return
+    end
+
+    if not State.reachSphere or not State.reachSphere.Parent then
+        createReachSphere()
+    end
+    updateReachSphereSize()
+end
+
+-- ═══════════════════════════════════════════════════
+--  GUI PRINCIPAL (Estilo Junkie)
+-- ═══════════════════════════════════════════════════
+
+local function buildGUI()
+    if State.gui then
+        return
+    end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "KavroyxHubGUI"
+    gui.ResetOnSpawn = false
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    gui.Parent = playerGui
+    State.gui = gui
+
+    -- Frame principal (estilo Junkie)
+    local main = Instance.new("Frame")
+    main.Name = "Main"
+    main.Size = UDim2.new(0, 370, 0, 320)
+    main.Position = UDim2.new(0.5, 0, 0.5, 0)
+    main.AnchorPoint = Vector2.new(0.5, 0.5)
+    main.BackgroundColor3 = STYLE.bgColor
+    main.BackgroundTransparency = 0
+    main.BorderSizePixel = 0
+    main.ClipsDescendants = false
+    main.Parent = gui
+
+    local mainCorner = Instance.new("UICorner")
+    mainCorner.CornerRadius = STYLE.cornerRadius
+    mainCorner.Parent = main
+
+    -- Barra superior (estilo Junkie)
+    local top = Instance.new("Frame")
+    top.Name = "Top"
+    top.Size = UDim2.new(1, 0, 0, 35)
+    top.Position = UDim2.new(0, 0, 0, 0)
+    top.BackgroundColor3 = STYLE.topColor
+    top.BorderSizePixel = 0
+    top.Parent = main
+
+    local topCorner = Instance.new("UICorner")
+    topCorner.CornerRadius = STYLE.cornerRadius
+    topCorner.Parent = top
+
+    local topCover = Instance.new("Frame")
+    topCover.Name = "TopCover"
+    topCover.Size = UDim2.new(1, 0, 0, 20)
+    topCover.Position = UDim2.new(0, 0, 1, -20)
+    topCover.BackgroundColor3 = STYLE.topColor
+    topCover.BorderSizePixel = 0
+    topCover.Parent = top
+
+    local line = Instance.new("Frame")
+    line.Name = "Line"
+    line.Size = UDim2.new(1, 0, 0, 1)
+    line.Position = UDim2.new(0, 0, 1, 0)
+    line.BackgroundColor3 = Color3.fromRGB(25, 50, 90)
+    line.BorderSizePixel = 0
+    line.Parent = top
+
+    -- Logo
+    local logo = Instance.new("ImageLabel")
+    logo.Name = "Logo"
+    logo.Size = UDim2.new(0, 20, 0, 20)
+    logo.Position = UDim2.new(0, 10, 0, 7)
+    logo.BackgroundTransparency = 1
+    logo.Image = STYLE.logoId
+    logo.ImageColor3 = STYLE.accentColor
+    logo.Parent = top
+
+    -- Título
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Size = UDim2.new(0, 200, 0, 35)
+    title.Position = UDim2.new(0, 35, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "KAVROYX HUB"
+    title.TextColor3 = STYLE.textColor
+    title.TextSize = 18
+    title.Font = STYLE.titleFont
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = top
+
+    -- Botão fechar
+    local closeBtn = Instance.new("ImageButton")
+    closeBtn.Name = "Close"
+    closeBtn.Size = UDim2.new(0, 20, 0, 20)
+    closeBtn.Position = UDim2.new(1, -10, 0.5, 0)
+    closeBtn.AnchorPoint = Vector2.new(1, 0.5)
+    closeBtn.BackgroundTransparency = 1
+    closeBtn.Image = STYLE.closeIcon
+    closeBtn.ImageColor3 = STYLE.textColor
+    closeBtn.ScaleType = Enum.ScaleType.Fit
+    closeBtn.Parent = top
+
+    -- Área de conteúdo
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.Size = UDim2.new(1, -20, 1, -55)
+    content.Position = UDim2.new(0, 10, 0, 45)
+    content.BackgroundTransparency = 1
+    content.Parent = main
+
+    -- Logo grande
+    local bigLogo = Instance.new("ImageLabel")
+    bigLogo.Name = "BigLogo"
+    bigLogo.Size = UDim2.new(0, 60, 0, 60)
+    bigLogo.Position = UDim2.new(0.5, -30, 0, 5)
+    bigLogo.BackgroundTransparency = 1
+    bigLogo.Image = STYLE.logoId
+    bigLogo.ImageColor3 = STYLE.accentColor
+    bigLogo.Parent = content
+
+    -- Título RGB animado
+    local rgbTitle = Instance.new("TextLabel")
+    rgbTitle.Name = "RGBTitle"
+    rgbTitle.Size = UDim2.new(1, 0, 0, 28)
+    rgbTitle.Position = UDim2.new(0, 0, 0, 70)
+    rgbTitle.BackgroundTransparency = 1
+    rgbTitle.Text = "REACH SYSTEM"
+    rgbTitle.TextSize = 20
+    rgbTitle.Font = STYLE.titleFont
+    rgbTitle.TextColor3 = Color3.fromRGB(255, 0, 0)
+    rgbTitle.TextXAlignment = Enum.TextXAlignment.Center
+    rgbTitle.Parent = content
+
+    -- Animação RGB
+    local hue = 0
+    local rgbConn = RunService.RenderStepped:Connect(function()
+        hue = (hue + 0.015) % 1
+        rgbTitle.TextColor3 = Color3.fromHSV(hue, 1, 1)
+    end)
+    table.insert(State.connections, rgbConn)
+
+    -- Label Reach (estilo input Junkie)
+    local reachFrame = Instance.new("Frame")
+    reachFrame.Name = "ReachFrame"
+    reachFrame.Size = UDim2.new(0.9, 0, 0, 35)
+    reachFrame.Position = UDim2.new(0.5, 0, 0, 105)
+    reachFrame.AnchorPoint = Vector2.new(0.5, 0)
+    reachFrame.BackgroundColor3 = STYLE.inputBg
+    reachFrame.BackgroundTransparency = 0.3
+    reachFrame.BorderSizePixel = 0
+    reachFrame.Parent = content
+
+    local reachStroke = Instance.new("UIStroke")
+    reachStroke.Color = STYLE.accentColor
+    reachStroke.Thickness = 1
+    reachStroke.Transparency = 0.5
+    reachStroke.Parent = reachFrame
+
+    local reachCorner = Instance.new("UICorner")
+    reachCorner.CornerRadius = STYLE.inputCornerRadius
+    reachCorner.Parent = reachFrame
+
+    local reachLabel = Instance.new("TextLabel")
+    reachLabel.Name = "ReachLabel"
+    reachLabel.Size = UDim2.new(1, 0, 1, 0)
+    reachLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+    reachLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+    reachLabel.BackgroundTransparency = 1
+    reachLabel.Text = "Reach: " .. CONFIG.reach
+    reachLabel.TextColor3 = STYLE.textColor
+    reachLabel.TextSize = 14
+    reachLabel.Font = STYLE.textFont
+    reachLabel.TextXAlignment = Enum.TextXAlignment.Center
+    reachLabel.Parent = reachFrame
+    State.reachLabel = reachLabel
+
+    -- Botões de controle (estilo Junkie)
+    local btnContainer = Instance.new("Frame")
+    btnContainer.Name = "BtnContainer"
+    btnContainer.Size = UDim2.new(0.9, 0, 0, 35)
+    btnContainer.Position = UDim2.new(0.5, 0, 0, 150)
+    btnContainer.AnchorPoint = Vector2.new(0.5, 0)
+    btnContainer.BackgroundTransparency = 1
+    btnContainer.Parent = content
+
+    -- Botão -
+    local minusBtn = Instance.new("TextButton")
+    minusBtn.Name = "Minus"
+    minusBtn.Size = UDim2.new(0.3, -4, 1, 0)
+    minusBtn.Position = UDim2.new(0.17, 0, 0, 0)
+    minusBtn.AnchorPoint = Vector2.new(0.5, 0)
+    minusBtn.BackgroundColor3 = STYLE.btnColor
+    minusBtn.BorderSizePixel = 0
+    minusBtn.Text = "-"
+    minusBtn.TextColor3 = Color3.new(1, 1, 1)
+    minusBtn.TextSize = 18
+    minusBtn.Font = STYLE.titleFont
+    minusBtn.AutoButtonColor = false
+    minusBtn.Parent = btnContainer
+
+    local minusCorner = Instance.new("UICorner")
+    minusCorner.CornerRadius = STYLE.btnCornerRadius
+    minusCorner.Parent = minusBtn
+
+    -- Botão +
+    local plusBtn = Instance.new("TextButton")
+    plusBtn.Name = "Plus"
+    plusBtn.Size = UDim2.new(0.3, -4, 1, 0)
+    plusBtn.Position = UDim2.new(0.5, 0, 0, 0)
+    plusBtn.AnchorPoint = Vector2.new(0.5, 0)
+    plusBtn.BackgroundColor3 = STYLE.btnColor
+    plusBtn.BorderSizePixel = 0
+    plusBtn.Text = "+"
+    plusBtn.TextColor3 = Color3.new(1, 1, 1)
+    plusBtn.TextSize = 18
+    plusBtn.Font = STYLE.titleFont
+    plusBtn.AutoButtonColor = false
+    plusBtn.Parent = btnContainer
+
+    local plusCorner = Instance.new("UICorner")
+    plusCorner.CornerRadius = STYLE.btnCornerRadius
+    plusCorner.Parent = plusBtn
+
+    -- Botão Toggle Sphere
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Name = "ToggleSphere"
+    toggleBtn.Size = UDim2.new(0.3, -4, 1, 0)
+    toggleBtn.Position = UDim2.new(0.83, 0, 0, 0)
+    toggleBtn.AnchorPoint = Vector2.new(0.5, 0)
+    toggleBtn.BackgroundColor3 = STYLE.btnColor
+    toggleBtn.BorderSizePixel = 0
+    toggleBtn.Text = "👁"
+    toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+    toggleBtn.TextSize = 16
+    toggleBtn.Font = STYLE.titleFont
+    toggleBtn.AutoButtonColor = false
+    toggleBtn.Parent = btnContainer
+
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = STYLE.btnCornerRadius
+    toggleCorner.Parent = toggleBtn
+
+    -- Botão SHOW/HIDE (estilo Junkie)
+    local showBtn = Instance.new("TextButton")
+    showBtn.Name = "ShowBtn"
+    showBtn.Size = UDim2.new(0.9, 0, 0, 35)
+    showBtn.Position = UDim2.new(0.5, 0, 0, 195)
+    showBtn.AnchorPoint = Vector2.new(0.5, 0)
+    showBtn.BackgroundColor3 = STYLE.btnColor
+    showBtn.BorderSizePixel = 0
+    showBtn.Text = "SHOW / HIDE MENU"
+    showBtn.TextColor3 = Color3.new(1, 1, 1)
+    showBtn.TextSize = 12
+    showBtn.Font = STYLE.titleFont
+    showBtn.AutoButtonColor = false
+    showBtn.Parent = content
+
+    local showCorner = Instance.new("UICorner")
+    showCorner.CornerRadius = STYLE.btnCornerRadius
+    showCorner.Parent = showBtn
+
+    -- Status label
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Name = "Status"
+    statusLabel.Size = UDim2.new(1, 0, 0, 20)
+    statusLabel.Position = UDim2.new(0, 0, 0, 240)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Text = "Status: ONLINE | Press K to toggle"
+    statusLabel.TextColor3 = STYLE.subTextColor
+    statusLabel.TextSize = 11
+    statusLabel.Font = STYLE.codeFont
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Center
+    statusLabel.Parent = content
+
+    -- ═══════════════════════════════════════════════════
+    --  EVENTOS DOS BOTÕES
+    -- ═══════════════════════════════════════════════════
+
+    local function pulse(btn)
+        local orig = btn.BackgroundColor3
+        local pop = Color3.new(math.min(orig.R * 1.3, 1), math.min(orig.G * 1.3, 1), math.min(orig.B * 1.3, 1))
+        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = pop}):Play()
+        task.wait(0.15)
+        TweenService:Create(btn, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundColor3 = orig}):Play()
+    end
+
+    minusBtn.MouseButton1Click:Connect(function()
+        if not canRun("minus") then return end
+        pulse(minusBtn)
+        CONFIG.reach = math.max(1, CONFIG.reach - 1)
+        reachLabel.Text = "Reach: " .. CONFIG.reach
+        updateReachSphere()
+        createNotification("Reach Updated", "Reach: " .. CONFIG.reach, 2, STYLE.logoId)
+    end)
+
+    plusBtn.MouseButton1Click:Connect(function()
+        if not canRun("plus") then return end
+        pulse(plusBtn)
+        CONFIG.reach += 1
+        reachLabel.Text = "Reach: " .. CONFIG.reach
+        updateReachSphere()
+        createNotification("Reach Updated", "Reach: " .. CONFIG.reach, 2, STYLE.logoId)
+    end)
+
+    toggleBtn.MouseButton1Click:Connect(function()
+        if not canRun("toggle") then return end
+        pulse(toggleBtn)
+        CONFIG.showReachSphere = not CONFIG.showReachSphere
+        updateReachSphere()
+        if CONFIG.showReachSphere then
+            createNotification("Sphere", "Reach sphere: ENABLED", 2, STYLE.logoId)
+        else
+            createNotification("Sphere", "Reach sphere: DISABLED", 2, STYLE.logoId)
+        end
+    end)
+
+    showBtn.MouseButton1Click:Connect(function()
+        if not canRun("show") then return end
+        pulse(showBtn)
+        State.menuVisible = false
+        main.Visible = false
+        createNotification("Menu Hidden", "Press K to show menu", 2, STYLE.logoId)
+    end)
+
+    closeBtn.MouseButton1Click:Connect(function()
+        createNotification("Closing...", "See you next time!", 2, STYLE.closeIcon)
+        TweenService:Create(main, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Position = UDim2.new(0.5, 0, -0.5, 0),
+            BackgroundTransparency = 1
+        }):Play()
+        task.wait(0.4)
+        gui:Destroy()
+        State.gui = nil
+    end)
+
+    -- Hover effects (estilo Junkie)
+    for _, btn in ipairs({minusBtn, plusBtn, toggleBtn, showBtn}) do
+        btn.MouseEnter:Connect(function()
+            local orig = btn.BackgroundColor3
+            local bright = Color3.new(math.min(orig.R * 1.15, 1), math.min(orig.G * 1.15, 1), math.min(orig.B * 1.15, 1))
+            TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = bright}):Play()
+        end)
+        btn.MouseLeave:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = STYLE.btnColor}):Play()
+        end)
+    end
+
+    -- Drag system
+    local dragInput, dragStart, startPos
+    top.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragInput = inp
+            dragStart = inp.Position
+            startPos = main.Position
+            inp.Changed:Connect(function()
+                if inp.UserInputState == Enum.UserInputState.End then
+                    dragInput = nil
+                end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if inp == dragInput and inp.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = inp.Position - dragStart
+            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+-- ═══════════════════════════════════════════════════
+--  TOGGLE MENU
+-- ═══════════════════════════════════════════════════
+
+local function toggleMenu()
+    if not State.gui then
+        buildGUI()
+        return
+    end
+
+    local main = State.gui:FindFirstChild("Main")
+    if not main then return end
+
+    State.menuVisible = not State.menuVisible
+    main.Visible = State.menuVisible
+
+    if State.menuVisible then
+        createNotification("Menu", "Menu: VISIBLE", 1.5, STYLE.logoId)
+    else
+        createNotification("Menu", "Menu: HIDDEN | Press K", 1.5, STYLE.logoId)
+    end
+end
+
+-- ═══════════════════════════════════════════════════
+--  AUTO TOUCH / REACH
+-- ═══════════════════════════════════════════════════
+
+local function processTouch()
+    if not CONFIG.autoSecondTouch then
+        return
+    end
+
+    local char = player.Character
+    if not char then return end
+
+    local parts = getValidParts(char)
+    if #parts == 0 then return end
+
+    local balls = State.balls
+    if #balls == 0 then return end
+
+    for p = 1, #parts do
+        local part = parts[p]
+        if not part or not part.Parent then continue end
+
+        for b = 1, #balls do
+            local ball = balls[b]
+            if not ball or not ball.Parent then continue end
+
+            local dist = (ball.Position - part.Position).Magnitude
+            if dist <= CONFIG.reach then
+                pcall(function()
+                    firetouchinterest(ball, part, 0)
+                    firetouchinterest(ball, part, 1)
+                end)
+            end
+        end
+    end
+end
+
+-- ═══════════════════════════════════════════════════
+--  INPUT HANDLER
+-- ═══════════════════════════════════════════════════
+
+local function onInputBegan(input, gameProcessed)
+    if gameProcessed then return end
+
+    if input.KeyCode == CONFIG.guiKey then
+        toggleMenu()
+    end
+end
+
+-- ═══════════════════════════════════════════════════
+--  CHARACTER HANDLER
+-- ═══════════════════════════════════════════════════
+
+local function onCharacterAdded(char)
+    task.delay(0.5, function()
+        updateReachSphere()
+    end)
+end
+
+-- ═══════════════════════════════════════════════════
+--  LOOPS
+-- ═══════════════════════════════════════════════════
+
+local touchConn = RunService.RenderStepped:Connect(function()
+    processTouch()
+end)
+table.insert(State.connections, touchConn)
+
+local scanConn = RunService.Heartbeat:Connect(function()
+    refreshBalls(false)
+end)
+table.insert(State.connections, scanConn)
+
+local inputConn = UserInputService.InputBegan:Connect(onInputBegan)
+table.insert(State.connections, inputConn)
+
+local charConn = player.CharacterAdded:Connect(onCharacterAdded)
+table.insert(State.connections, charConn)
+
+-- ═══════════════════════════════════════════════════
+--  INICIALIZAÇÃO
+-- ═══════════════════════════════════════════════════
+
+buildGUI()
+updateReachSphere()
+refreshBalls(true)
+
+createNotification("✅ Kavroyx Hub V11", "Reach system online! Press K to toggle", 3, STYLE.logoId)
+print("[Kavroyx] Hub V11 inicializado com sucesso.")
+ 
